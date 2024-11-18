@@ -91,7 +91,7 @@ def get_args():
                         choices=['model_only', 'model+optimizer'],
                         help='save model/optimizer states')
     parser.add_argument('--timeout',
-                        default=600,
+                        default=60,
                         type=int,
                         help='timeout (in seconds) of cosyvoice_join.')
     parser = deepspeed.add_config_arguments(parser)
@@ -119,6 +119,27 @@ def init_dataset_and_dataloader(args, configs, gan, train_data_indexes):
                                 num_workers=args.num_workers,
                                 prefetch_factor=args.prefetch)
     return train_dataset, cv_dataset, train_data_loader, cv_data_loader
+
+def get_latest_ckpt(ckpt_dir, regex="epoch_*.pt"):
+    import glob
+    f_list = glob.glob(os.path.join(ckpt_dir, regex))
+    f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
+    if len(f_list) != 0:
+        x = f_list[-1]
+        epoch = x.split("epoch_")[1].split("_")[0]
+        y = f"{ckpt_dir}/epoch_{epoch}_whole.pt"
+        if os.path.exists(y):
+            x = y
+        return x
+    else:
+        return "failed to find latest_checkpoint_path:" \
+               + os.path.join(ckpt_dir, regex)
+
+def get_resume_params(ckpt_path):
+    yaml_path = ckpt_path.replace(".pt", ".yaml")
+    with open(yaml_path, 'r') as file:
+        info_dict = load_hyperpyyaml(file)
+    return info_dict
 
 
 @record
@@ -149,11 +170,25 @@ def main():
 
     # load checkpoint
     model = configs[args.model]
+    start_epoch = 0
+    resume_info = None
     if args.checkpoint is not None:
         if os.path.exists(args.checkpoint):
+            if os.path.isdir(args.checkpoint):  # the ckpt path is a dir, we will use the most recent ckpt file
+                ckpt_path = get_latest_ckpt(args.checkpoint)
+                args.checkpoint = ckpt_path
+                resume_info = get_resume_params(ckpt_path)
+                logging.info(resume_info)
+
             saved_state_dict = torch.load(args.checkpoint, map_location='cpu')
             new_state_dict = {}
-            for k, v in model.state_dict().items():
+            if gan:
+                dest_model = model.generator
+                logging.warning('discriminator is not pretrained!')
+            else:
+                dest_model = model
+
+            for k, v in dest_model.state_dict().items():
                 if k not in saved_state_dict:
                     logging.warning(
                         f"{k} is not saved in the checkpoint {args.checkpoint}")
@@ -167,7 +202,8 @@ def main():
                 else:
                     new_state_dict[k] = saved_state_dict[k]
 
-            model.load_state_dict(new_state_dict, strict=False)
+            dest_model.load_state_dict(new_state_dict, strict=False)
+            logging.info(f'Loaded checkpoint {args.checkpoint}')
         else:
             logging.warning('checkpoint {} do not exsist!'.format(args.checkpoint))
 
@@ -176,14 +212,19 @@ def main():
     rank = int(os.environ["LOCAL_RANK"])
     configs['codec_type'] = 's3tokenizer'
 
-    if configs['codec_type'] == 'facodec':
-        codec_model = FACodecInfer().cuda(rank)
-    else:
-        codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
-        codec_model.init_from_onnx("../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
-        codec_model = codec_model.cuda(rank)
+    if not gan:
+        if configs['codec_type'] == 'facodec':
+            codec_model = FACodecInfer().cuda(rank)
+        else:
+            codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
+            codec_model.init_from_onnx("../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
+            codec_model = codec_model.cuda(rank)
 
-    spkemb_model = SpeakerEmbedding(ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
+        spkemb_model = SpeakerEmbedding(ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
+
+    else:
+        codec_model = None
+        spkemb_model = None
 
     # Get optimizer & scheduler
     model, optimizer, scheduler, optimizer_d, scheduler_d = init_optimizer_and_scheduler(args, configs, model, gan)
@@ -194,12 +235,16 @@ def main():
 
     # Get executor
     executor = Executor(gan=gan)
+    if resume_info:
+        executor.step = resume_info["step"]
+        start_epoch = resume_info['epoch'] + 1
+        optimizer.param_groups[0]['lr'] = resume_info["lr"]
     executor.configs = configs
     # Init scaler, used for pytorch amp mixed precision training
     scaler = torch.cuda.amp.GradScaler() if args.use_amp else None
 
     # Start training loop
-    for epoch in range(info_dict['max_epoch']):
+    for epoch in range(start_epoch, info_dict['max_epoch']):
         executor.epoch = epoch
 
         for data_indexes in configs['train_data_indexes']:

@@ -434,12 +434,10 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
         #     del batch["speech_len"]
         if mode == 'inference':
             tts_text = [sample[i]['tts_text'] for i in order]
-            tts_index = [sample[i]['tts_index'] for i in order]
             tts_text_token = [torch.tensor(sample[i]['tts_text_token']) for i in order]
             tts_text_token_len = torch.tensor([i.size(0) for i in tts_text_token], dtype=torch.int32)
             tts_text_token = pad_sequence(tts_text_token, batch_first=True, padding_value=-1)
             batch.update({'tts_text': tts_text,
-                          'tts_index': tts_index,
                           'tts_text_token': tts_text_token,
                           'tts_text_token_len': tts_text_token_len})
         # if use_spk_embedding is True:

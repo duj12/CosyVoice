@@ -107,11 +107,12 @@ class DistributedSampler:
 
 class DataList(IterableDataset):
 
-    def __init__(self, lists, utt2wav, utt2text, utt2spk, shuffle=True, partition=True):
+    def __init__(self, lists, utt2wav, utt2text, utt2spk, shuffle=True, partition=True, tts_text=None):
         self.lists = lists
         self.utt2wav = utt2wav
         self.utt2text = utt2text
         self.utt2spk = utt2spk
+        self.tts_text = tts_text  # a list, each prompt will generate all texts in the list
         self.sampler = DistributedSampler(shuffle, partition)
 
     def set_epoch(self, epoch):
@@ -132,7 +133,14 @@ class DataList(IterableDataset):
                 sample['spk'] = utt
 
             sample.update(sampler_info)
-            yield sample
+
+            if self.tts_text is not None:
+                for text in self.tts_text:
+                    new_sample = sample.copy()
+                    new_sample.update({'tts_text': text})
+                    yield new_sample
+            else:
+                yield sample
 
 
 def Dataset(data_dir,
@@ -140,7 +148,8 @@ def Dataset(data_dir,
             mode='train',
             gan=False,
             shuffle=True,
-            partition=True):
+            partition=True,
+            tts_file=None):
     """ Construct dataset from arguments
 
         We have two shuffle stage in the Dataset. The first is global
@@ -195,8 +204,17 @@ def Dataset(data_dir,
 
     valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
 
+    tts_text = None
+    if mode=="inference" and os.path.exists(tts_file):
+        tts_text = []
+        with open(tts_file, 'r', encoding='utf-8') as f_ttstext:
+            for line in f_ttstext:
+                line = line.strip()
+                tts_text.append(line)
+            print(f"read {len(tts_text)} lines from {tts_file}")
+
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2spk,
-                       shuffle=shuffle, partition=partition)
+                       shuffle=shuffle, partition=partition, tts_text=tts_text)
 
     if gan is True:
         # map partial arg to padding func in gan mode

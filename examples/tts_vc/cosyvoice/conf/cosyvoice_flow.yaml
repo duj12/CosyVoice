@@ -171,7 +171,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 8
+    batch_size: 4
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft
