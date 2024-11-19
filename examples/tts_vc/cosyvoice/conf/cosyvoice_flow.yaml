@@ -5,6 +5,7 @@ __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
 # fixed params
+codec_type: "s3tokenizer"
 sample_rate: 24000
 text_encoder_input_size: 512
 llm_input_size: 1024

@@ -6,9 +6,9 @@ stage=0
 stop_stage=0
 
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
-# pretrained_model_dir=exp/cosyvoice/flow/torch_ddp
+pretrained_model_dir=exp/cosyvoice/flow/torch_ddp
 # train flow
-export CUDA_VISIBLE_DEVICES="4,5"
+export CUDA_VISIBLE_DEVICES="4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
@@ -19,7 +19,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
   if [ $train_engine == 'deepspeed' ]; then
     echo "Notice deepspeed has its own optimizer config. Modify conf/ds_stage2.json if necessary"
   fi
-portnum=2000
+portnum=3000
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
   for model in flow; do
@@ -30,7 +30,7 @@ run_command() {
       --train_engine $train_engine \
       --config conf/cosyvoice_flow.yaml \
       --model $model \
-      --checkpoint $pretrained_model_dir/$model.pt \
+      --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
       --tensorboard_dir `pwd`/tensorboard/cosyvoice/$model/$train_engine \
       --ddp.dist_backend $dist_backend \

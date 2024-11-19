@@ -26,6 +26,7 @@ from hyperpyyaml import load_hyperpyyaml
 from tqdm import tqdm
 from cosyvoice.cli.model import CosyVoiceModel
 from cosyvoice.utils.executor_online_codec import get_codec_and_spkemb
+from cosyvoice.bin.train_online_codec import init_codec_and_embed_model
 from cosyvoice.dataset.dataset_kaldidata import Dataset
 
 import s3tokenizer
@@ -74,17 +75,7 @@ def main():
     model = CosyVoiceModel(configs['llm'], configs['flow'], configs['hift'], fp16=False)
     model.load(args.llm_model, args.flow_model, args.hifigan_model)
 
-    configs['codec_type'] = 's3tokenizer'
-    if configs['codec_type'] == 'facodec':
-        codec_model = FACodecInfer().cuda()
-    else:
-        codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
-        codec_model.init_from_onnx(
-            "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
-        codec_model = codec_model.cuda()
-
-    spkemb_model = SpeakerEmbedding(
-        ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda()
+    codec_model, spkemb_model = init_codec_and_embed_model(configs, 0)
 
     test_dataset = Dataset(args.prompt_data, data_pipeline=configs['data_pipeline'], mode='inference', shuffle=False, partition=False,
                            tts_file=args.tts_text)

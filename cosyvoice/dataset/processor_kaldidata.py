@@ -128,7 +128,7 @@ def filter(data,
         yield sample
 
 
-def resample(data, resample_rate=22050, min_sample_rate=16000, mode='train'):
+def resample(data, resample_rate=24000, min_sample_rate=16000, mode='train'):
     """ Resample data.
         Inplace operation.
 

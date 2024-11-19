@@ -5,11 +5,12 @@ __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
 # fixed params
-sample_rate: 22050
+codec_type: "s3tokenizer"
+sample_rate: 24000
 text_encoder_input_size: 512
 llm_input_size: 1024
 llm_output_size: 1024
-spk_embed_dim: 192
+spk_embed_dim: 512
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.

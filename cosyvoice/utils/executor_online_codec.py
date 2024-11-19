@@ -24,7 +24,7 @@ from cosyvoice.utils.train_utils import update_parameter_and_lr, log_per_step, l
 
 
 def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
-                         codec_type="s3tokenizer"):
+                         codec_type="s3tokenizer", sample_rate=24000):
     wave = batch_dict['speech'].to(codec_model.device)
     wave_len = batch_dict['speech_len'].to(codec_model.device)
     with torch.no_grad():
@@ -36,19 +36,26 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
             speech_code = vq_id  # B T 6
             speech_code_len = wave_len // codec_model.fa_en.hop_length
         else:
-            # mel_feat = batch_dict['speech_feat'].to(model.device)
-            # mel_len = batch_dict['speech_feat_len'].to(model.device)
             mels = []
             import s3tokenizer
             for i in range(wave.size(0)):
-                mels.append(
-                    s3tokenizer.log_mel_spectrogram(wave[i, :wave_len[i]]))
+                audio = wave[i, :wave_len[i]]
+                # whisper speech code use 16k sample_rate
+                if sample_rate != 16000:
+                    import torchaudio
+                    resampler = torchaudio.transforms.Resample(
+                        sample_rate, 16000).to(audio.device)
+                    audio = resampler(audio)
+                mels.append(s3tokenizer.log_mel_spectrogram(audio))
             mels, mels_lens = s3tokenizer.padding(mels)
-            speech_code, speech_code_len = codec_model.quantize(mels.cuda(),
-                                                                mels_lens.cuda())
+            mels = mels.to(codec_model.device)
+            mels_lens = mels_lens.to(codec_model.device)
+            speech_code, speech_code_len = codec_model.quantize(mels, mels_lens)
 
         speech_code = speech_code.clone()
         speech_code_len = speech_code_len.clone()
+
+        # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
         speaker_embs = spkemb_model(wave.unsqueeze(1), wave_len)  # B D
 
     batch_dict['speech_token'] = speech_code
@@ -103,7 +110,8 @@ class Executor:
 
                 with context():
                     batch_dict = get_codec_and_spkemb(
-                        batch_dict, codec_model, spkemb_model, self.configs['codec_type'])
+                        batch_dict, codec_model, spkemb_model,
+                        self.configs['codec_type'], self.configs['sample_rate'])
 
                     info_dict = batch_forward(model, batch_dict, scaler, info_dict)
                     info_dict = batch_backward(model, scaler, info_dict)
@@ -203,7 +211,9 @@ class Executor:
                 batch_dict['turn'] = 'generator'
 
             if self.gan is False:   # we only need speech token and speaker emb when train llm and flow
-                batch_dict = get_codec_and_spkemb(batch_dict, codec_model, spkemb_model, self.configs['codec_type'])
+                batch_dict = get_codec_and_spkemb(
+                    batch_dict, codec_model, spkemb_model,
+                    self.configs['codec_type'], self.configs['sample_rate'])
 
             info_dict = batch_forward(model, batch_dict, None, info_dict)
 

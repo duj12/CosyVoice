@@ -19,12 +19,13 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
   if [ $train_engine == 'deepspeed' ]; then
     echo "Notice deepspeed has its own optimizer config. Modify conf/ds_stage2.json if necessary"
   fi
-portnum=1000
+portnum=2000
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
   for model in llm; do
     OMP_NUM_THREADS=4 \
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
+      --master_port $portnum   \
       cosyvoice/bin/train_online_codec.py \
       --train_engine $train_engine \
       --config conf/cosyvoice.yaml \

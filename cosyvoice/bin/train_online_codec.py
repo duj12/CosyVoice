@@ -141,6 +141,19 @@ def get_resume_params(ckpt_path):
         info_dict = load_hyperpyyaml(file)
     return info_dict
 
+def init_codec_and_embed_model(configs, rank):
+    if configs['codec_type'] == 'facodec':
+        codec_model = FACodecInfer().cuda(rank)
+    else:
+        codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
+        codec_model.init_from_onnx(
+            "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
+        codec_model = codec_model.cuda(rank)
+
+    spkemb_model = SpeakerEmbedding(
+        ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
+
+    return codec_model, spkemb_model
 
 @record
 def main():
@@ -210,17 +223,9 @@ def main():
     # Dispatch model from cpu to gpu
     model = wrap_cuda_model(args, model)
     rank = int(os.environ["LOCAL_RANK"])
-    configs['codec_type'] = 's3tokenizer'
 
     if not gan:
-        if configs['codec_type'] == 'facodec':
-            codec_model = FACodecInfer().cuda(rank)
-        else:
-            codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
-            codec_model.init_from_onnx("../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
-            codec_model = codec_model.cuda(rank)
-
-        spkemb_model = SpeakerEmbedding(ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
+        codec_model, spkemb_model = init_codec_and_embed_model(configs, rank)
 
     else:
         codec_model = None
