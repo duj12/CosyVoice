@@ -72,7 +72,7 @@ def main():
     with open(args.config, 'r') as f:
         configs = load_hyperpyyaml(f)
 
-    model = CosyVoiceModel(configs['llm'], configs['flow'], configs['hift'], fp16=False)
+    model = CosyVoiceModel(configs['llm'], configs['flow'], configs['hift'], fp16=False, sr=configs['sample_rate'])
     model.load(args.llm_model, args.flow_model, args.hifigan_model)
 
     codec_model, spkemb_model = init_codec_and_embed_model(configs, 0)

@@ -135,11 +135,15 @@ def get_latest_ckpt(ckpt_dir, regex="epoch_*.pt"):
         return "failed to find latest_checkpoint_path:" \
                + os.path.join(ckpt_dir, regex)
 
-def get_resume_params(ckpt_path):
-    yaml_path = ckpt_path.replace(".pt", ".yaml")
+def get_resume_params(yaml_path):
     with open(yaml_path, 'r') as file:
         info_dict = load_hyperpyyaml(file)
     return info_dict
+
+def freeze(model):
+    for _, param in model.named_parameters():
+        param.requires_grad = False
+    return model
 
 def init_codec_and_embed_model(configs, rank):
     if configs['codec_type'] == 'facodec':
@@ -153,6 +157,8 @@ def init_codec_and_embed_model(configs, rank):
     spkemb_model = SpeakerEmbedding(
         ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
 
+    codec_model = freeze(codec_model)
+    spkemb_model = freeze(spkemb_model)
     return codec_model, spkemb_model
 
 @record
@@ -190,8 +196,10 @@ def main():
             if os.path.isdir(args.checkpoint):  # the ckpt path is a dir, we will use the most recent ckpt file
                 ckpt_path = get_latest_ckpt(args.checkpoint)
                 args.checkpoint = ckpt_path
-                resume_info = get_resume_params(ckpt_path)
-                logging.info(resume_info)
+                yaml_path = ckpt_path.replace(".pt", ".yaml")
+                if os.path.exists(yaml_path):
+                    resume_info = get_resume_params(ckpt_path)
+                    logging.info(resume_info)
 
             saved_state_dict = torch.load(args.checkpoint, map_location='cpu')
             new_state_dict = {}

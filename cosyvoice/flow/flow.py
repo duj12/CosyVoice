@@ -110,8 +110,10 @@ class MaskedDiffWithXvec(torch.nn.Module):
                   prompt_feat,
                   prompt_feat_len,
                   embedding,
-                  flow_cache):
+                  flow_cache,
+                  sample_rate,):
         assert token.shape[0] == 1
+
         # xvec projection
         embedding = F.normalize(embedding, dim=1)
         embedding = self.spk_embed_affine_layer(embedding)
@@ -125,8 +127,8 @@ class MaskedDiffWithXvec(torch.nn.Module):
         # text encode
         h, h_lengths = self.encoder(token, token_len)
         h = self.encoder_proj(h)
-        mel_len1, mel_len2 = prompt_feat.shape[1], int(token_len2 / self.input_frame_rate * 22050 / 256)
-        h, h_lengths = self.length_regulator.inference(h[:, :token_len1], h[:, token_len1:], mel_len1, mel_len2, self.input_frame_rate)
+        mel_len1, mel_len2 = prompt_feat.shape[1], int(token_len2 / self.input_frame_rate * sample_rate / 256)
+        h, h_lengths = self.length_regulator.inference(h[:, :token_len1], h[:, token_len1:], mel_len1, mel_len2, self.input_frame_rate, sample_rate)
 
         # get conditions
         conds = torch.zeros([1, mel_len1 + mel_len2, self.output_size], device=token.device)

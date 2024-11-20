@@ -27,17 +27,19 @@ class CosyVoiceModel:
                  llm: torch.nn.Module,
                  flow: torch.nn.Module,
                  hift: torch.nn.Module,
-                 fp16: bool):
+                 fp16: bool,
+                 sr: int = 22050,):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.llm = llm
         self.flow = flow
         self.hift = hift
+        self.sample_rate = sr
         self.fp16 = fp16
         self.token_min_hop_len = 2 * self.flow.input_frame_rate
         self.token_max_hop_len = 4 * self.flow.input_frame_rate
         self.token_overlap_len = 20
         # mel fade in out
-        self.mel_overlap_len = int(self.token_overlap_len / self.flow.input_frame_rate * 22050 / 256)
+        self.mel_overlap_len = int(self.token_overlap_len / self.flow.input_frame_rate * sr / 256)
         self.mel_window = np.hamming(2 * self.mel_overlap_len)
         # hift cache
         self.mel_cache_len = 20
@@ -108,7 +110,8 @@ class CosyVoiceModel:
                                                   prompt_feat=prompt_feat.to(self.device),
                                                   prompt_feat_len=torch.tensor([prompt_feat.shape[1]], dtype=torch.int32).to(self.device),
                                                   embedding=embedding.to(self.device),
-                                                  flow_cache=self.flow_cache_dict[uuid])
+                                                  flow_cache=self.flow_cache_dict[uuid],
+                                                  sample_rate=self.sample_rate)
         self.flow_cache_dict[uuid] = flow_cache
 
         # mel overlap fade in out

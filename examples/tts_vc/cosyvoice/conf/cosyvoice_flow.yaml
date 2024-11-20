@@ -110,6 +110,9 @@ flow: !new:cosyvoice.flow.flow.MaskedDiffWithXvec
             num_heads: 8
             act_fn: 'gelu'
 
+    mel_feat_conf:
+
+
 hift: !new:cosyvoice.hifigan.generator.HiFTGenerator
     in_channels: 80
     base_channels: 512
@@ -193,8 +196,8 @@ data_pipeline: [
 train_conf:
     optim: adam
     optim_conf:
-        lr: 0.001 # change to 1e-5 during sft
-    scheduler: warmuplr # change to constantlr during sft
+        lr: 0.0001 # change to 1e-5 during sft
+    scheduler: warmuplr # warmuplr # change to constantlr during sft
     scheduler_conf:
         warmup_steps: 2500
     max_epoch: 200

@@ -49,14 +49,15 @@ class InterpolateRegulator(nn.Module):
         olens = ylens
         return out * mask, olens
 
-    def inference(self, x1, x2, mel_len1, mel_len2, input_frame_rate=50):
+    def inference(self, x1, x2, mel_len1, mel_len2, input_frame_rate=50, sample_rate=22050):
         # in inference mode, interploate prompt token and token(head/mid/tail) seprately, so we can get a clear separation point of mel
         # x in (B, T, D)
+        print(f"input_frame_rate:{input_frame_rate}, sample_rate:{sample_rate}")
         if x2.shape[1] > 40:
-            x2_head = F.interpolate(x2[:, :20].transpose(1, 2).contiguous(), size=int(20 / input_frame_rate * 22050 / 256), mode='linear')
-            x2_mid = F.interpolate(x2[:, 20:-20].transpose(1, 2).contiguous(), size=mel_len2 - int(20 / input_frame_rate * 22050 / 256) * 2,
+            x2_head = F.interpolate(x2[:, :20].transpose(1, 2).contiguous(), size=int(20 / input_frame_rate * sample_rate / 256), mode='linear')
+            x2_mid = F.interpolate(x2[:, 20:-20].transpose(1, 2).contiguous(), size=mel_len2 - int(20 / input_frame_rate * sample_rate / 256) * 2,
                                    mode='linear')
-            x2_tail = F.interpolate(x2[:, -20:].transpose(1, 2).contiguous(), size=int(20 / input_frame_rate * 22050 / 256), mode='linear')
+            x2_tail = F.interpolate(x2[:, -20:].transpose(1, 2).contiguous(), size=int(20 / input_frame_rate * sample_rate / 256), mode='linear')
             x2 = torch.concat([x2_head, x2_mid, x2_tail], dim=2)
         else:
             x2 = F.interpolate(x2.transpose(1, 2).contiguous(), size=mel_len2, mode='linear')
