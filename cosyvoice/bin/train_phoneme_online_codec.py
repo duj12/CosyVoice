@@ -29,7 +29,7 @@ from hyperpyyaml import load_hyperpyyaml
 from torch.distributed.elastic.multiprocessing.errors import record
 
 from cosyvoice.utils.executor_online_codec import Executor
-from cosyvoice.dataset.dataset_kaldidata import Dataset
+from cosyvoice.dataset.dataset_jsondata import Dataset
 from torch.utils.data import DataLoader
 
 from cosyvoice.utils.train_utils import (
@@ -169,7 +169,7 @@ def main():
     # gan train has some special initialization logic
     gan = True if args.model == 'hifigan' else False
 
-    override_dict = {k: None for k in ['llm', 'flow', 'hift'] if k != args.model}
+    override_dict = {k: None for k in ['llm_pho', 'flow', 'hift'] if k != args.model}
     if gan is True:
         override_dict.pop('hift')
     with open(args.config, 'r') as f:
