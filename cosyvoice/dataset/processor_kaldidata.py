@@ -105,25 +105,35 @@ def filter(data,
     for sample in data:
         # sample['speech'], sample['sample_rate'] = torchaudio.load(BytesIO(sample['audio_data']))
         if not os.path.exists(sample['wav']):
+            logging.warning(f"wav path {sample['wav']} does not exist, this utt is jumped.")
             continue
         sample['speech'], sample['sample_rate'] = torchaudio.load(sample['wav'])    # load from wav_path
         sample['speech'] = sample['speech'].mean(dim=0, keepdim=True)
 
+        if mode == 'inference':  # do not filter any utt when we inference
+            yield sample
+
         # sample['wav'] is torch.Tensor, we have 100 frames every second
         num_frames = sample['speech'].size(1) / sample['sample_rate'] * 100
         if num_frames < min_length:
+            logging.warning(f"{sample['wav']} less than {min_length} frame(1s=100f)")
             continue
         if num_frames > max_length:
+            logging.warning(f"{sample['wav']} more than {max_length} frame(1s=100f)")
             continue
         if len(sample['text_token']) < token_min_length:
+            logging.warning(f"utt: {sample['utt']}, text: {sample['text']} less than {token_min_length}")
             continue
         if len(sample['text_token']) > token_max_length:
+            logging.warning(f"utt: {sample['utt']}, text: {sample['text']} more than {token_max_length}")
             continue
 
         if num_frames != 0:
             if len(sample['text_token']) / num_frames < min_output_input_ratio:
+                logging.warning(f"utt: {sample['utt']}, text to audio frame ratio less than {min_output_input_ratio}")
                 continue
             if len(sample['text_token']) / num_frames > max_output_input_ratio:
+                logging.warning(f"utt: {sample['utt']}, text to audio frame ratio more than {max_output_input_ratio}")
                 continue
         yield sample
 
@@ -146,6 +156,7 @@ def resample(data, resample_rate=24000, min_sample_rate=16000, mode='train'):
         waveform = sample['speech']
         if sample_rate != resample_rate:
             if sample_rate < min_sample_rate:
+                logging.warning(f"audio sample_rate {sample['sample_rate']} less than {min_sample_rate}, the clip is droped")
                 continue
             sample['sample_rate'] = resample_rate
             sample['speech'] = torchaudio.transforms.Resample(
@@ -271,11 +282,11 @@ def tokenize_phoneme(data, get_tokenizer, mode='train'):
         try:
             pho_ids, tone_ids, lang_ids, prsd_ids = tokenizer.encode(sample['text'])
         except Exception as e:
-            print(e)
+            logging.error(e)
             continue
 
         if not (len(prsd_ids)==len(tone_ids)==len(lang_ids)==len(prsd_ids)):
-            print(f"{sample['utt']}, {sample['wav']} phoneme error.")
+            logging.warning(f"{sample['utt']}, {sample['wav']} phoneme error.")
             continue
 
         sample['text_token'] = pho_ids

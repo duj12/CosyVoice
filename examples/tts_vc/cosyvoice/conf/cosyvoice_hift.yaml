@@ -246,11 +246,11 @@ train_conf:
 train_conf_gan:
     optim: adam
     optim_conf:
-        lr: 0.0002 # use small lr for gan training
+        lr: 0.00005  # 0.0002 # use small lr for gan training
     scheduler: constantlr
     optim_d: adam
     optim_conf_d:
-        lr: 0.0002 # use small lr for gan training
+        lr: 0.00005  # 0.0002 # use small lr for gan training
     scheduler_d: constantlr
     max_epoch: 200
     grad_clip: 5

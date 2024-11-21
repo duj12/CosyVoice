@@ -8,7 +8,7 @@ stop_stage=0
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
 pretrained_model_dir=exp/cosyvoice/hifigan/torch_ddp
 # train hifigan
-export CUDA_VISIBLE_DEVICES="6,7"
+export CUDA_VISIBLE_DEVICES="0"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
