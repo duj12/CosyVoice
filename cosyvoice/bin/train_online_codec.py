@@ -145,7 +145,7 @@ def freeze(model):
         param.requires_grad = False
     return model
 
-def init_codec_and_embed_model(configs, rank):
+def init_codec_and_embed_model(configs, rank=0):
     if configs['codec_type'] == 'facodec':
         codec_model = FACodecInfer().cuda(rank)
     else:
@@ -164,7 +164,7 @@ def init_codec_and_embed_model(configs, rank):
 @record
 def main():
     args = get_args()
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)s %(message)s')
     # gan train has some special initialization logic
     gan = True if args.model == 'hifigan' else False
@@ -250,8 +250,12 @@ def main():
     executor = Executor(gan=gan)
     if resume_info:
         executor.step = resume_info["step"]
-        start_epoch = resume_info['epoch'] + 1
+        start_epoch = resume_info['epoch']
         optimizer.param_groups[0]['lr'] = resume_info["lr"]
+        scheduler.set_step(resume_info["step"])
+        if scheduler_d is not None:
+            scheduler_d.set_step(resume_info["step"])
+
     executor.configs = configs
     # Init scaler, used for pytorch amp mixed precision training
     scaler = torch.cuda.amp.GradScaler() if args.use_amp else None

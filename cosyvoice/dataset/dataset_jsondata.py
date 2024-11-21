@@ -203,7 +203,8 @@ def Dataset(json_file,
     def add_one_data(json_file):
         if isinstance(json_file, list):
             json_file, language, repeat_time = json_file
-        dataset_info = json.load(open(json_file, 'r', encoding='utf8'))
+        with open(json_file, 'r', encoding='utf8') as fin:
+            dataset_info = json.load(fin)
         data_dir = os.path.dirname(json_file)
         data_name = os.path.basename(data_dir)
         wave_dir = os.path.join(data_dir, "Formatted")
@@ -219,6 +220,8 @@ def Dataset(json_file,
                 utt2wav[utt] = wav_path
                 utt2text[utt] = text
                 utt2spk[utt] = sid
+
+        del dataset_info
 
     if isinstance(json_file, list):
         for sub_data in json_file:

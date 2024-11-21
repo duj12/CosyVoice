@@ -27,9 +27,10 @@ run_command() {
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
       --master_port $portnum   \
       cosyvoice/bin/train_phoneme_online_codec.py \
+      --timeout  600    \
       --train_engine $train_engine \
       --config conf/cosyvoice_phoneme.yaml \
-      --model $model \
+      --model llm \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
       --tensorboard_dir `pwd`/tensorboard/cosyvoice/$model/$train_engine \

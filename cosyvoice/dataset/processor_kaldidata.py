@@ -264,7 +264,8 @@ def tokenize_phoneme(data, get_tokenizer, mode='train'):
         Returns:
             Iterable[{key, wav, txt, tokens, label, sample_rate}]
     """
-    tokenizer = get_tokenizer()
+    tokenizer = get_tokenizer(mode=mode)
+
     for sample in data:
         assert 'text' in sample
         try:
@@ -505,7 +506,7 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
                 text_prsd = pad_sequence(text_prsd, batch_first=True,
                                          padding_value=0)
 
-                batch['tts_text_token'] = torch.cat([text_token.unsqueeze(-1),
+                batch['tts_text_token'] = torch.cat([tts_text_token.unsqueeze(-1),
                                                  text_tone.unsqueeze(-1),
                                                  text_lang.unsqueeze(-1),
                                                  text_prsd.unsqueeze(-1)],

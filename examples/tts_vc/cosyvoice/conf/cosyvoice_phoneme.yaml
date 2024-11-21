@@ -15,7 +15,7 @@ spk_embed_dim: 512
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm_pho: !new:cosyvoice.llm.llm.TransformerLM_Phoneme
+llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
