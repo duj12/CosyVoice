@@ -143,10 +143,11 @@ class TransformerLM(torch.nn.Module):
             sampling: int,
             ignore_eos: bool = True,
     ):
-        while True:
-            top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
-            if (not ignore_eos) or (self.speech_token_size not in top_ids):
-                break
+        top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        # while True:
+        #     top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        #     if (not ignore_eos) or (self.speech_token_size not in top_ids):
+        #         break
         return top_ids
 
     @torch.inference_mode()
@@ -340,10 +341,11 @@ class TransformerLM_MultiCode(torch.nn.Module):
             sampling: int,
             ignore_eos: bool = True,
     ):
-        while True:
-            top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
-            if (not ignore_eos) or (self.speech_token_size not in top_ids):
-                break
+        top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        # while True:
+        #     top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        #     if (not ignore_eos) or (self.speech_token_size not in top_ids):
+        #         break
         return top_ids
 
     @torch.inference_mode()
@@ -569,10 +571,12 @@ class TransformerLM_Phoneme(torch.nn.Module):
             sampling: int,
             ignore_eos: bool = True,
     ):
-        while True:
-            top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
-            if (not ignore_eos) or (self.speech_token_size not in top_ids):
-                break
+
+        top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        # while True:
+        #     top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        #     if (not ignore_eos) or (self.speech_token_size not in top_ids):
+        #         break
         return top_ids
 
     @torch.inference_mode()

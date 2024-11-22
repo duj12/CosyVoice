@@ -56,7 +56,7 @@ def get_args():
                         help='inference mode')
     parser.add_argument('--result_dir', required=True, help='asr result file')
     args = parser.parse_args()
-    print(args)
+    logging.info(args)
     return args
 
 
@@ -76,8 +76,8 @@ def main():
     model.load(args.llm_model, args.flow_model, args.hifigan_model)
 
     codec_model, spkemb_model = init_codec_and_embed_model(configs, 0)
-
-    test_dataset = Dataset(args.prompt_data, data_pipeline=configs['data_pipeline'], mode='inference', shuffle=False, partition=False,
+    data_pipeline = configs['infer_data_pipeline'] if 'infer_data_pipeline' in configs else configs['data_pipeline']
+    test_dataset = Dataset(args.prompt_data, data_pipeline=data_pipeline, mode='inference', shuffle=False, partition=False,
                            tts_file=args.tts_text)
     test_data_loader = DataLoader(test_dataset, batch_size=None, num_workers=0)
 

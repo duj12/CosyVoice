@@ -17,6 +17,7 @@
 import random
 import os
 import math
+import logging
 from functools import partial
 
 import torch
@@ -135,10 +136,17 @@ class DataList(IterableDataset):
             sample.update(sampler_info)
 
             if self.tts_text is not None:
-                for text in self.tts_text:
-                    new_sample = sample.copy()
-                    new_sample.update({'tts_text': text})
-                    yield new_sample
+                if isinstance(self.tts_text, dict):
+                    for text in self.tts_text[utt]:
+                        new_sample = sample.copy()
+                        new_sample.update({'tts_text': text})
+                        yield new_sample
+
+                elif isinstance(self.tts_text, list):
+                    for text in self.tts_text:
+                        new_sample = sample.copy()
+                        new_sample.update({'tts_text': text})
+                        yield new_sample
             else:
                 yield sample
 
@@ -168,9 +176,10 @@ def Dataset(data_dir,
     utt2spk = {}
 
     def add_one_data(data_dir):
+        logging.info(f"Loading data: {data_dir}")
         assert os.path.exists(f"{data_dir}/wav.scp") \
-               and os.path.exists(f"{data_dir}/text") \
-               and os.path.exists(f"{data_dir}/utt2spk")
+               and os.path.exists(f"{data_dir}/text")
+               # and os.path.exists(f"{data_dir}/utt2spk")
 
         with open(f"{data_dir}/wav.scp", 'r', encoding='utf-8') as f_scp:
             for line in f_scp:
@@ -188,13 +197,16 @@ def Dataset(data_dir,
                 utt, text = line[0], line[1]
                 utt2text[utt] = text
 
-        with open(f"{data_dir}/utt2spk", 'r', encoding='utf-8') as f_spk:
-            for line in f_spk:
-                line = line.strip().split(maxsplit=1)
-                if len(line) != 2:
-                    continue
-                utt, spk = line[0], line[1]
-                utt2spk[utt] = spk
+        if os.path.exists(f"{data_dir}/utt2spk"):
+            with open(f"{data_dir}/utt2spk", 'r', encoding='utf-8') as f_spk:
+                for line in f_spk:
+                    line = line.strip().split(maxsplit=1)
+                    if len(line) != 2:
+                        continue
+                    utt, spk = line[0], line[1]
+                    utt2spk[utt] = spk
+
+        logging.info(f"Current utts: {len(utt2wav.keys())}")
 
     if isinstance(data_dir, list):
         for sub_data in data_dir:
@@ -206,12 +218,17 @@ def Dataset(data_dir,
 
     tts_text = None
     if mode=="inference" and os.path.exists(tts_file):
-        tts_text = []
+        valid_utt_list.sort()
         with open(tts_file, 'r', encoding='utf-8') as f_ttstext:
-            for line in f_ttstext:
-                line = line.strip()
-                tts_text.append(line)
-            print(f"read {len(tts_text)} lines from {tts_file}")
+            if tts_file.endswith('.txt'):
+                tts_text = []
+                for line in f_ttstext:
+                    line = line.strip()
+                    tts_text.append(line)
+            elif tts_file.endswith('.json'):
+                import json
+                tts_text=json.load(f_ttstext)
+            logging.info(f"read {len(tts_text)} lines from {tts_file}")
 
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2spk,
                        shuffle=shuffle, partition=partition, tts_text=tts_text)

@@ -196,6 +196,15 @@ data_pipeline: [
     !ref <padding>,
 ]
 
+infer_data_pipeline: [
+    !ref <tokenize>,
+    !ref <filter>,
+    !ref <resample>,
+    !ref <compute_fbank>,
+    !ref <batch>,
+    !ref <padding>,
+]
+
 # train conf
 train_conf:
     optim: adam

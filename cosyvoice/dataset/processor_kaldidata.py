@@ -113,29 +113,30 @@ def filter(data,
         if mode == 'inference':  # do not filter any utt when we inference
             yield sample
 
-        # sample['wav'] is torch.Tensor, we have 100 frames every second
-        num_frames = sample['speech'].size(1) / sample['sample_rate'] * 100
-        if num_frames < min_length:
-            logging.warning(f"{sample['wav']} less than {min_length} frame(1s=100f)")
-            continue
-        if num_frames > max_length:
-            logging.warning(f"{sample['wav']} more than {max_length} frame(1s=100f)")
-            continue
-        if len(sample['text_token']) < token_min_length:
-            logging.warning(f"utt: {sample['utt']}, text: {sample['text']} less than {token_min_length}")
-            continue
-        if len(sample['text_token']) > token_max_length:
-            logging.warning(f"utt: {sample['utt']}, text: {sample['text']} more than {token_max_length}")
-            continue
+        else:
+            # sample['wav'] is torch.Tensor, we have 100 frames every second
+            num_frames = sample['speech'].size(1) / sample['sample_rate'] * 100
+            if num_frames < min_length:
+                logging.warning(f"{sample['wav']} less than {min_length} frame(1s=100f)")
+                continue
+            if num_frames > max_length:
+                logging.warning(f"{sample['wav']} more than {max_length} frame(1s=100f)")
+                continue
+            if len(sample['text_token']) < token_min_length:
+                logging.warning(f"utt: {sample['utt']}, text: {sample['text']} less than {token_min_length}")
+                continue
+            if len(sample['text_token']) > token_max_length:
+                logging.warning(f"utt: {sample['utt']}, text: {sample['text']} more than {token_max_length}")
+                continue
 
-        if num_frames != 0:
-            if len(sample['text_token']) / num_frames < min_output_input_ratio:
-                logging.warning(f"utt: {sample['utt']}, text to audio frame ratio less than {min_output_input_ratio}")
-                continue
-            if len(sample['text_token']) / num_frames > max_output_input_ratio:
-                logging.warning(f"utt: {sample['utt']}, text to audio frame ratio more than {max_output_input_ratio}")
-                continue
-        yield sample
+            if num_frames != 0:
+                if len(sample['text_token']) / num_frames < min_output_input_ratio:
+                    logging.warning(f"utt: {sample['utt']}, text to audio frame ratio less than {min_output_input_ratio}")
+                    continue
+                if len(sample['text_token']) / num_frames > max_output_input_ratio:
+                    logging.warning(f"utt: {sample['utt']}, text to audio frame ratio more than {max_output_input_ratio}")
+                    continue
+            yield sample
 
 
 def resample(data, resample_rate=24000, min_sample_rate=16000, mode='train'):
