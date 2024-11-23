@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Mobvoi Inc (Di Wu)
 # Copyright (c) 2024 Alibaba Inc (authors: Xiang Lyu)
+#                    Jing Du
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +31,9 @@ def get_args():
     parser.add_argument('--val_best',
                         action="store_true",
                         help='averaged model')
+    parser.add_argument('--is_hifigan',
+                        action="store_true",
+                        help='averaged model')
     parser.add_argument('--num',
                         default=5,
                         type=int,
@@ -57,14 +61,15 @@ def main():
                 epoch = int(dic_yaml['epoch'])
                 step = int(dic_yaml['step'])
                 tag = dic_yaml['tag']
-                val_scores += [[epoch, step, loss, tag]]
+                name = os.path.basename(y)
+                val_scores += [[epoch, step, loss, tag, name]]
         sorted_val_scores = sorted(val_scores,
                                    key=lambda x: x[2],
                                    reverse=False)
         print("best val (epoch, step, loss, tag) = " +
               str(sorted_val_scores[:args.num]))
         path_list = [
-            args.src_path + '/epoch_{}_whole.pt'.format(score[0])
+            args.src_path + f"/{score[-1].replace('yaml', 'pt')}"
             for score in sorted_val_scores[:args.num]
         ]
     print(path_list)
@@ -80,12 +85,20 @@ def main():
             else:
                 avg[k] += states[k]
     # average
+    new_dict = {}
     for k in avg.keys():
         if avg[k] is not None:
             # pytorch 1.6 use true_divide instead of /=
             avg[k] = torch.true_divide(avg[k], num)
+
+            if k.startswith('generator') and args.is_hifigan:
+                new_k = k.replace("generator.", '')
+                new_dict[new_k] = avg[k]
+            else:
+                new_dict[k] = avg[k]
+
     print('Saving to {}'.format(args.dst_model))
-    torch.save(avg, args.dst_model)
+    torch.save(new_dict, args.dst_model)
 
 
 if __name__ == '__main__':

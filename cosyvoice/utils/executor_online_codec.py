@@ -72,6 +72,7 @@ class Executor:
         self.step = 0
         self.epoch = 0
         self.configs = {}
+        self.data_idx = 0  # for multi data list, when resume training, we should start from the recent data index
         self.rank = int(os.environ.get('RANK', 0))
         self.device = torch.device('cuda:{}'.format(self.rank))
 
@@ -127,9 +128,9 @@ class Executor:
                     model.train()
                 if (batch_idx + 1) % info_dict["accum_grad"] == 0:
                     self.step += 1
-        dist.barrier()
-        self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=True,
-                codec_model=codec_model, spkemb_model=spkemb_model)
+        # dist.barrier()
+        # self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=True,
+        #         codec_model=codec_model, spkemb_model=spkemb_model)
 
     def train_one_epoc_gan(self, model, optimizer, scheduler, optimizer_d, scheduler_d, train_data_loader, cv_data_loader,
                            writer, info_dict, scaler, group_join, codec_model=None, spkemb_model=None):
@@ -187,9 +188,9 @@ class Executor:
                     model.train()
                 if (batch_idx + 1) % info_dict["accum_grad"] == 0:
                     self.step += 1
-        dist.barrier()
-        self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=True,
-                codec_model=codec_model, spkemb_model=spkemb_model)
+        # dist.barrier()
+        # self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=True,
+        #         codec_model=codec_model, spkemb_model=spkemb_model)
 
     @torch.inference_mode()
     def cv(self, model, cv_data_loader, writer, info_dict, on_batch_end=True, codec_model=None, spkemb_model=None):
@@ -203,6 +204,7 @@ class Executor:
             info_dict["step"] = self.step
             info_dict["epoch"] = self.epoch
             info_dict["batch_idx"] = batch_idx
+            info_dict["data_idx"] = self.data_idx
 
             num_utts = len(batch_dict["utts"])
             total_num_utts += num_utts
@@ -226,5 +228,5 @@ class Executor:
             total_loss_dict[k] = sum(v) / total_num_utts
         info_dict['loss_dict'] = total_loss_dict
         log_per_save(writer, info_dict)
-        model_name = 'epoch_{}_whole'.format(self.epoch) if on_batch_end else 'epoch_{}_step_{}'.format(self.epoch, self.step + 1)
+        model_name = 'epoch_{}_whole'.format(self.epoch) if on_batch_end else 'epoch_{}_step_{}'.format(self.epoch, self.step)
         save_model(model, model_name, info_dict)

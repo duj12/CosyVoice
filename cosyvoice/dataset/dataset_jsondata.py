@@ -16,6 +16,7 @@
 
 import random
 import os
+import logging
 import json
 import math
 from functools import partial
@@ -201,6 +202,7 @@ def Dataset(json_file,
     utt2spk = {}
 
     def add_one_data(json_file):
+        logging.info(f"Loading data: {json_file}")
         if isinstance(json_file, list):
             json_file, language, repeat_time = json_file
         with open(json_file, 'r', encoding='utf8') as fin:
@@ -222,6 +224,7 @@ def Dataset(json_file,
                 utt2spk[utt] = sid
 
         del dataset_info
+        logging.info(f"Current utts: {len(utt2wav.keys())}")
 
     if isinstance(json_file, list):
         for sub_data in json_file:
@@ -238,7 +241,7 @@ def Dataset(json_file,
             for line in f_ttstext:
                 line = line.strip()
                 tts_text.append(line)
-            print(f"read {len(tts_text)} lines from {tts_file}")
+            logging.info(f"read {len(tts_text)} lines from {tts_file}")
 
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2spk,
                        shuffle=shuffle, partition=partition, tts_text=tts_text)

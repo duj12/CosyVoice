@@ -19,6 +19,7 @@ import argparse
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import os
+import time
 import torch
 from torch.utils.data import DataLoader
 import torchaudio
@@ -119,7 +120,8 @@ def main():
             for model_output in model.tts(**model_input):
                 tts_speeches.append(model_output['tts_speech'])
             tts_speeches = torch.concat(tts_speeches, dim=1)
-            tts_key = '{}_{}'.format(utts[0], tts_text[0][:10])
+            time_stamp = time.strftime('%m%d%H%M', time.localtime())
+            tts_key = '{}_{}_{}'.format(utts[0], tts_text[0][:10], time_stamp)
             tts_fn = os.path.join(args.result_dir, '{}.wav'.format(tts_key))
             torchaudio.save(tts_fn, tts_speeches, sample_rate=24000)
             f.write('{} {}\n'.format(tts_key, tts_fn))

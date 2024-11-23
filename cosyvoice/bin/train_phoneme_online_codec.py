@@ -126,10 +126,10 @@ def get_latest_ckpt(ckpt_dir, regex="epoch_*.pt"):
     f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
     if len(f_list) != 0:
         x = f_list[-1]
-        epoch = x.split("epoch_")[1].split("_")[0]
-        y = f"{ckpt_dir}/epoch_{epoch}_whole.pt"
-        if os.path.exists(y):
-            x = y
+        # epoch = x.split("epoch_")[1].split("_")[0]
+        # y = f"{ckpt_dir}/epoch_{epoch}_whole.pt"
+        # if os.path.exists(y):
+        #     x = y
         return x
     else:
         return "failed to find latest_checkpoint_path:" \
@@ -169,7 +169,7 @@ def main():
     # gan train has some special initialization logic
     gan = True if args.model == 'hifigan' else False
 
-    override_dict = {k: None for k in ['llm_pho', 'flow', 'hift'] if k != args.model}
+    override_dict = {k: None for k in ['llm', 'flow', 'hift'] if k != args.model}
     if gan is True:
         override_dict.pop('hift')
     with open(args.config, 'r') as f:
@@ -255,6 +255,8 @@ def main():
         scheduler.set_step(resume_info["step"])
         if scheduler_d is not None:
             scheduler_d.set_step(resume_info["step"])
+        if 'data_idx' in resume_info:
+            executor.data_idx = resume_info['data_idx']
 
     executor.configs = configs
     # Init scaler, used for pytorch amp mixed precision training
@@ -264,8 +266,13 @@ def main():
     for epoch in range(start_epoch, info_dict['max_epoch']):
         executor.epoch = epoch
 
-        for data_indexes in configs['train_data_indexes']:
+        for data_i, data_indexes in enumerate(configs['train_data_indexes']):
+            if data_i != executor.data_idx:
+                logging.warning(f"Jumped train data {data_indexes}")
+                continue
+
             # Get dataset & dataloader
+            logging.info(f"Loading train data index {data_indexes}")
             train_dataset, cv_dataset, train_data_loader, cv_data_loader = \
                 init_dataset_and_dataloader(args, configs, gan, data_indexes)
 
@@ -279,7 +286,14 @@ def main():
                 executor.train_one_epoc(model, optimizer, scheduler, train_data_loader, cv_data_loader,
                                         writer, info_dict, scaler, group_join, codec_model, spkemb_model)
 
-        dist.destroy_process_group(group_join)
+            executor.data_idx = data_i + 1
+            if data_i == len(configs['train_data_indexes']) - 1:
+                executor.data_idx = 0
+
+            del train_dataset
+            del train_data_loader
+
+            dist.destroy_process_group(group_join)
 
 
 if __name__ == '__main__':

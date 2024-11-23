@@ -209,7 +209,7 @@ infer_data_pipeline: [
 train_conf:
     optim: adam
     optim_conf:
-        lr: 0.0001 # change to 1e-5 during sft
+        lr: 0.001 # change to 1e-5 during sft
     scheduler: warmuplr # warmuplr # change to constantlr during sft
     scheduler_conf:
         warmup_steps: 2500
@@ -379,11 +379,11 @@ train_data: [
     [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.9.vits.json",0,1 ],
 ]
 
-train_data_indexes: [
+train_data_indexes0: [
     [0,1,2,3,4,5]
 ]
 
-train_data_indexes1: [
+train_data_indexes: [
     [16,17], [18,19], [20,21], [22,23], [24,25],
     [86,87], [88,89], [90,91], [92,93], [94,95],
     [26,27], [28,29], [30,31], [32,33], [34,35],

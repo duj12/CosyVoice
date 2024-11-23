@@ -6,9 +6,9 @@ stage=0
 stop_stage=0
 
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
-pretrained_model_dir=exp/cosyvoice/llm_pho/torch_ddp
+pretrained_model_dir=exp/cosyvoice/llm_pho_25w/torch_ddp
 # train llm_pho
-export CUDA_VISIBLE_DEVICES="4,5,6,7"
+export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
@@ -22,7 +22,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
 portnum=2100
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
-  for model in llm_pho; do
+  for model in llm_pho_25w; do
     OMP_NUM_THREADS=4 \
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
       --master_port $portnum   \
