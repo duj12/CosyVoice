@@ -82,12 +82,13 @@ def main():
                            tts_file=args.tts_text)
     test_data_loader = DataLoader(test_dataset, batch_size=None, num_workers=0)
 
+    args.result_dir = os.path.abspath(args.result_dir)
     os.makedirs(args.result_dir, exist_ok=True)
     fn = os.path.join(args.result_dir, 'wav.scp')
     f = open(fn, 'w')
     with torch.no_grad():
-        for _, batch in tqdm(enumerate(test_data_loader)):
-
+        time_start = time.perf_counter()
+        for wav_idx, batch in tqdm(enumerate(test_data_loader)):
             batch = get_codec_and_spkemb(batch, codec_model, spkemb_model, codec_type=configs['codec_type'])
 
             utts = batch["utts"]
@@ -119,15 +120,26 @@ def main():
             tts_speeches = []
             for model_output in model.tts(**model_input):
                 tts_speeches.append(model_output['tts_speech'])
+
+            time_end = time.perf_counter()
+            time_tts = time_end - time_start
+
             tts_speeches = torch.concat(tts_speeches, dim=1)
             time_stamp = time.strftime('%m%d%H%M', time.localtime())
-            tts_key = '{}_{}_{}'.format(utts[0], tts_text[0][:10], time_stamp)
-            tts_fn = os.path.join(args.result_dir, '{}.wav'.format(tts_key))
+            tts_key = f'{wav_idx+1}_{utts[0]}_{tts_text[0][:10]}_{time_stamp}'
+            tts_fn = os.path.join(args.result_dir, f'{tts_key}.wav')
             torchaudio.save(tts_fn, tts_speeches, sample_rate=24000)
-            f.write('{} {}\n'.format(tts_key, tts_fn))
+
+            time_audio = tts_speeches.size(-1) / configs['sample_rate']
+            rtf = time_tts / time_audio
+            logging.info(f'RTF {rtf}, {tts_fn}')
+            f.write(f'{tts_key}\t{tts_fn}\t{rtf}\n')
             f.flush()
+
+            time_start = time.perf_counter()   # 开始时间更新
+
     f.close()
-    logging.info('Result wav.scp saved in {}'.format(fn))
+    logging.info(f'Result wav.scp saved in {fn}')
 
 
 if __name__ == '__main__':

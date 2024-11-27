@@ -286,7 +286,7 @@ def tokenize(data, get_tokenizer, allowed_special='all', mode='train'):
         yield sample
 
 def tokenize_phoneme(data, get_tokenizer, mode='train'):
-    """ Decode text to chars or BPE
+    """ Decode text to phoneme
         Inplace operation
 
         Args:

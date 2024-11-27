@@ -26,7 +26,7 @@ Count the remaining objects without x, 1,2,3,4,5,6,7,8. So your answer is eight.
 Next number two, let's count all the objects together. 1,2,3,4,5,6,7,8,2, got there, 8. And then count all the x, 1,2,3. So you got 3.
 That says 8-3. Now, how will you find the answer? Correct? Again, count all the objects without x, one, two, three, four, five. So the answer is 5.
 Very good, children. We are getting it. Now I'll show you some more ways of doing subtraction. 
-No. 2, we can use our fingers to do subtraction. Wow, that's gonna be exciting. So get ready with your fingers now, kids. So let's have 5 minus 3 equals 2. 
+No.2, we can use our fingers to do subtraction. Wow, that's gonna be exciting. So get ready with your fingers now, kids. So let's have 5 minus 3 equals 2.
 We're going to five minutes are using our fingers. first. Show the total numbers with your fingers.
 So let us have five. That's gonna be the minuend. So you have to show all of that. So that's five.
 Now, next step, fold the number of fingers according to the given subtrahend. So what is our subtrahend? Very good. 
@@ -37,7 +37,7 @@ Remember, in addition, we did the counting on. We can do that also in subtractio
 Here is the problem 6-4. What's the answer? First, find the smaller number. So which is smaller? Is it 6 or 4? Very good. 4 has the smaller value. And that is the subtrahend. 
 Next, think of the next number to it and count on stop to the bigger number using your fingers. 
 Okay, next, the number of fingers or markings you've used to reach to the minimum and put the audience. 
-Let's do it step by step. So the smaller number is the 4. Now think of the next number to No. 4. That is 5. Good. five. 
+Let's do it step by step. So the smaller number is the 4. Now think of the next number to No.4. That is 5. Good. five.
 Oh, hey there. You're back. Good to see you. This week, we're also learning about rainbows. Our lesson of the week is on rainbows. 
 Look at this beautiful rainbow. I made this rainbow. And you can make a rainbow at home, too.
 Rainbows. That's what we're going to learn about this week. But before we do that, we should sing our rainbow song. Will you sing the rainbow song with me? How about this? 

@@ -223,7 +223,7 @@ def Dataset(data_dir,
 
     tts_text = None
     if mode=="inference" and os.path.exists(tts_file):
-        valid_utt_list.sort()
+        # valid_utt_list.sort()
         with open(tts_file, 'r', encoding='utf-8') as f_ttstext:
             if tts_file.endswith('.txt'):
                 tts_text = []

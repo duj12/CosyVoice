@@ -53,6 +53,10 @@ def write_json_pretty(to_path, data, intent=4):
         else:
             json.dump(data, writer, ensure_ascii=False)
 
+def contain_pronunciation_char(chars):
+    if re.findall(r'[\u4E00-\u9FA5A-Za-z0-9]', chars):
+        return True
+    return False
 
 def process(base_path, sub_dirs, txt_path, language):
     temp_list = []
@@ -62,7 +66,7 @@ def process(base_path, sub_dirs, txt_path, language):
         dir_path = os.path.join(base_path, dir_name)
         if os.path.isdir(dir_path):
             # 查找第一个 wav 文件
-            wav_files = [f for f in os.listdir(dir_path) if f.endswith(".wav")]
+            wav_files = [f for f in sorted(os.listdir(dir_path)) if f.endswith(".wav")]
             if wav_files:
                 wav_file = wav_files[0]
                 utt = os.path.splitext(wav_file)[0]
@@ -79,6 +83,9 @@ def process(base_path, sub_dirs, txt_path, language):
                 tts_text[utt] = []
             texts = split_text(line, language=language)
             for text in texts:
+                if not contain_pronunciation_char(text):
+                    print(f"Jumped {text}")
+                    continue
                 tts_text[utt].append(text)
 
     return temp_list, tts_text
