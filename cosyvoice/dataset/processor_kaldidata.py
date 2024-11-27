@@ -138,6 +138,24 @@ def filter(data,
                     continue
             yield sample
 
+def transcribe(data, get_transcriber, mode='inference'):
+    for sample in data:
+        assert 'sample_rate' in sample
+        assert 'speech' in sample
+
+        if 'text' not in sample:
+            transcriber = get_transcriber()
+            transribe_sr = 16000
+            speech = sample['speech']
+            if sample['sample_rate'] != transribe_sr:
+                speech = torchaudio.transforms.Resample(
+                    orig_freq=sample['sample_rate'], new_freq=transribe_sr)(speech)
+            input = speech[0]
+            sample['text'] = transcriber.transcribe(speech_or_path=input)
+            logging.info(f"prompt text: {sample['text']}")
+
+        yield sample
+
 
 def resample(data, resample_rate=24000, min_sample_rate=16000, mode='train'):
     """ Resample data.
@@ -184,7 +202,8 @@ def truncate(data, truncate_length=24576, mode='train'):
             start = random.randint(0, waveform.shape[1] - truncate_length)
             waveform = waveform[:, start: start + truncate_length]
         else:
-            waveform = torch.concat([waveform, torch.zeros(1, truncate_length - waveform.shape[1])], dim=1)
+            if mode == 'train':
+                waveform = torch.concat([waveform, torch.zeros(1, truncate_length - waveform.shape[1])], dim=1)
         sample['speech'] = waveform
         yield sample
 

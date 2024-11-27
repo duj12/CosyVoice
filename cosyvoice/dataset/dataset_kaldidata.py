@@ -127,7 +127,8 @@ class DataList(IterableDataset):
             sample = {}
             sample['utt'] = utt
             sample['wav'] = self.utt2wav[utt]
-            sample['text'] = self.utt2text[utt]
+            if utt in self.utt2text:
+                sample['text'] = self.utt2text[utt]
             if utt in self.utt2spk:
                 sample['spk'] = self.utt2spk[utt]
             else:
@@ -177,8 +178,8 @@ def Dataset(data_dir,
 
     def add_one_data(data_dir):
         logging.info(f"Loading data: {data_dir}")
-        assert os.path.exists(f"{data_dir}/wav.scp") \
-               and os.path.exists(f"{data_dir}/text")
+        assert os.path.exists(f"{data_dir}/wav.scp") # \
+               # and os.path.exists(f"{data_dir}/text")
                # and os.path.exists(f"{data_dir}/utt2spk")
 
         with open(f"{data_dir}/wav.scp", 'r', encoding='utf-8') as f_scp:
@@ -189,13 +190,14 @@ def Dataset(data_dir,
                 utt, wav = line[0], line[1]
                 utt2wav[utt] = wav
 
-        with open(f"{data_dir}/text", 'r', encoding='utf-8') as f_text:
-            for line in f_text:
-                line = line.strip().split(maxsplit=1)
-                if len(line) != 2:
-                    continue
-                utt, text = line[0], line[1]
-                utt2text[utt] = text
+        if os.path.exists(f"{data_dir}/text"):
+            with open(f"{data_dir}/text", 'r', encoding='utf-8') as f_text:
+                for line in f_text:
+                    line = line.strip().split(maxsplit=1)
+                    if len(line) != 2:
+                        continue
+                    utt, text = line[0], line[1]
+                    utt2text[utt] = text
 
         if os.path.exists(f"{data_dir}/utt2spk"):
             with open(f"{data_dir}/utt2spk", 'r', encoding='utf-8') as f_spk:
@@ -214,7 +216,10 @@ def Dataset(data_dir,
     else:
         add_one_data(data_dir)
 
-    valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    valid_utt_list = list(utt2wav.keys())
+    if len(utt2text) != 0:
+        valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    logging.info(f"Total utts: {len(valid_utt_list)}")
 
     tts_text = None
     if mode=="inference" and os.path.exists(tts_file):

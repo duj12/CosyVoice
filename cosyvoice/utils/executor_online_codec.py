@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Mobvoi Inc (Binbin Zhang)
 #               2024 Alibaba Inc (authors: Xiang Lyu)
+#                    Jing Du
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

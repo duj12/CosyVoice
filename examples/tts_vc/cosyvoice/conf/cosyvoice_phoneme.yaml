@@ -183,7 +183,11 @@ batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft
-
+truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
+    truncate_length: 360000  # 24k, 15second for inference
+get_transcriber: !name:cosyvoice.dataset.transcriber.get_transcriber
+transcribe: !name:cosyvoice.dataset.processor_kaldidata.transcribe
+    get_transcriber: !ref <get_transcriber>
 # dataset processor pipeline
 data_pipeline: [
     !ref <tokenize>,
@@ -197,9 +201,11 @@ data_pipeline: [
 ]
 
 infer_data_pipeline: [
-    !ref <tokenize>,
     !ref <filter>,
     !ref <resample>,
+    !ref <truncate>,
+    !ref <transcribe>,
+    !ref <tokenize>,
     !ref <compute_fbank>,
     !ref <batch>,
     !ref <padding>,
