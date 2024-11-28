@@ -103,7 +103,13 @@ class CosyVoiceModel:
                 self.tts_speech_token_dict[uuid].append(i)
         self.llm_end_dict[uuid] = True
 
-    def token2wav(self, token, prompt_token, prompt_feat, embedding, uuid, finalize=False, speed=1.0):
+    def token2wav(self, token,
+                  prompt_token=torch.zeros(1, 0, dtype=torch.int32),
+                  prompt_feat=torch.zeros(1, 0, 80),
+                  embedding=torch.zeros(0, 512),
+                  uuid='0',
+                  finalize=False,
+                  speed=1.0):
         tts_mel, flow_cache = self.flow.inference(token=token.to(self.device),
                                                   token_len=torch.tensor([token.shape[1]], dtype=torch.int32).to(self.device),
                                                   prompt_token=prompt_token.to(self.device),
@@ -144,8 +150,8 @@ class CosyVoiceModel:
                 tts_speech = fade_in_out(tts_speech, self.hift_cache_dict[uuid]['speech'], self.speech_window)
         return tts_speech
 
-    def tts(self, text, flow_embedding, llm_embedding=torch.zeros(0, 192),
-            prompt_text=torch.zeros(1, 0, dtype=torch.int32),
+    def tts(self, text, flow_embedding, llm_embedding=torch.zeros(0, 512),
+            prompt_text=torch.zeros(1, 0, 4, dtype=torch.int32),
             llm_prompt_speech_token=torch.zeros(1, 0, dtype=torch.int32),
             flow_prompt_speech_token=torch.zeros(1, 0, dtype=torch.int32),
             prompt_speech_feat=torch.zeros(1, 0, 80), stream=False, speed=1.0, **kwargs):
