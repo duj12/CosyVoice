@@ -298,21 +298,23 @@ def tokenize_phoneme(data, get_tokenizer, mode='train'):
     tokenizer = get_tokenizer(mode=mode)
 
     for sample in data:
-        assert 'text' in sample
-        try:
-            pho_ids, tone_ids, lang_ids, prsd_ids = tokenizer.encode(sample['text'])
-        except Exception as e:
-            logging.error(e)
-            continue
+        if mode == 'train':
+            assert 'text' in sample
+        if 'text' in sample:
+            try:
+                pho_ids, tone_ids, lang_ids, prsd_ids = tokenizer.encode(sample['text'])
+            except Exception as e:
+                logging.error(e)
+                continue
 
-        if not (len(prsd_ids)==len(tone_ids)==len(lang_ids)==len(prsd_ids)):
-            logging.warning(f"{sample['utt']}, {sample['wav']} phoneme error.")
-            continue
+            if not (len(prsd_ids)==len(tone_ids)==len(lang_ids)==len(prsd_ids)):
+                logging.warning(f"{sample['utt']}, {sample['wav']} phoneme error.")
+                continue
 
-        sample['text_token'] = pho_ids
-        sample['text_tone'] = tone_ids
-        sample['text_lang'] = lang_ids
-        sample['text_prsd'] = prsd_ids
+            sample['text_token'] = pho_ids
+            sample['text_tone'] = tone_ids
+            sample['text_lang'] = lang_ids
+            sample['text_prsd'] = prsd_ids
 
         if mode == 'inference':
             pho_ids1, tone_ids1, lang_ids1, prsd_ids1 = tokenizer.encode(sample['tts_text'])
@@ -449,7 +451,7 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
     """
     for sample in data:
         assert isinstance(sample, list)
-        speech_feat_len = torch.tensor([x['speech_feat'].size(1) for x in sample],
+        speech_feat_len = torch.tensor([x['speech'].size(0) for x in sample],
                                        dtype=torch.int32)
         order = torch.argsort(speech_feat_len, descending=True)
 
@@ -462,31 +464,44 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
         # speech_token = pad_sequence(speech_token,
         #                             batch_first=True,
         #                             padding_value=0)
-        speech_feat = [sample[i]['speech_feat'] for i in order]
-        speech_feat_len = torch.tensor([i.size(0) for i in speech_feat], dtype=torch.int32)
-        speech_feat = pad_sequence(speech_feat,
-                                   batch_first=True,
-                                   padding_value=0)
-        text = [sample[i]['text'] for i in order]
-        text_token = [torch.tensor(sample[i]['text_token']) for i in order]
-        text_token_len = torch.tensor([i.size(0) for i in text_token], dtype=torch.int32)
-        text_token = pad_sequence(text_token, batch_first=True, padding_value=0)
         # utt_embedding = torch.stack([sample[i]['utt_embedding'] for i in order], dim=0)
         # spk_embedding = torch.stack([sample[i]['spk_embedding'] for i in order], dim=0)
+
         batch = {
             "utts": utts,
             "speech": speech,
             "speech_len": speech_len,
             # "speech_token": speech_token,
             # "speech_token_len": speech_token_len,
-            "speech_feat": speech_feat,
-            "speech_feat_len": speech_feat_len,
-            "text": text,
-            "text_token": text_token,
-            "text_token_len": text_token_len,
+            # "speech_feat": speech_feat,
+            # "speech_feat_len": speech_feat_len,
             # "utt_embedding": utt_embedding,
             # "spk_embedding": spk_embedding,
         }
+        if 'speech_feat' in sample[0]:
+            speech_feat = [sample[i]['speech_feat'] for i in order]
+            speech_feat_len = torch.tensor([i.size(0) for i in speech_feat],
+                                           dtype=torch.int32)
+            speech_feat = pad_sequence(speech_feat,
+                                       batch_first=True,
+                                       padding_value=0)
+            batch.update({
+                "speech_feat": speech_feat,
+                "speech_feat_len": speech_feat_len,
+            })
+
+        if 'text' in sample[0]:
+            text = [sample[i]['text'] for i in order]
+            text_token = [torch.tensor(sample[i]['text_token']) for i in order]
+            text_token_len = torch.tensor([i.size(0) for i in text_token], dtype=torch.int32)
+            text_token = pad_sequence(text_token, batch_first=True, padding_value=0)
+
+            batch.update({
+                "text": text,
+                "text_token": text_token,
+                "text_token_len": text_token_len,
+            })
+
 
         if 'text_tone' in sample[0]:
             text_tone = [torch.tensor(sample[i]['text_tone']) for i in order]

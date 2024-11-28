@@ -93,24 +93,33 @@ def main():
 
             utts = batch["utts"]
             assert len(utts) == 1, "inference mode only support batchsize 1"
-            text_token = batch["text_token"].to(device)
-            text_token_len = batch["text_token_len"].to(device)
             tts_text = batch["tts_text"]
-
             print(utts, tts_text)
 
             tts_text_token = batch["tts_text_token"].to(device)
             tts_text_token_len = batch["tts_text_token_len"].to(device)
+            utt_embedding = batch["embedding"].to(device)
+            spk_embedding = batch["embedding"].to(device)
+
             speech_token = batch["speech_token"].to(device)
             speech_token_len = batch["speech_token_len"].to(device)
             speech_feat = batch["speech_feat"].to(device)
             speech_feat_len = batch["speech_feat_len"].to(device)
-            utt_embedding = batch["embedding"].to(device)
-            spk_embedding = batch["embedding"].to(device)
+
             if args.mode == 'sft':
+                # 实验发现如果flow不输入speech token和speech feat会更稳定，
+                # 主要靠embedding和tts_predict_speech_token去重建语音。
                 model_input = {'text': tts_text_token, 'text_len': tts_text_token_len,
-                               'llm_embedding': spk_embedding, 'flow_embedding': spk_embedding}
+                               'llm_embedding': spk_embedding, 'flow_embedding': spk_embedding,
+                               # 'flow_prompt_speech_token': speech_token,
+                               # 'flow_prompt_speech_token_len': speech_token_len,
+                               # 'prompt_speech_feat': speech_feat,
+                               # 'prompt_speech_feat_len': speech_feat_len,
+                }
+
             else:
+                text_token = batch["text_token"].to(device)
+                text_token_len = batch["text_token_len"].to(device)
                 model_input = {'text': tts_text_token, 'text_len': tts_text_token_len,
                                'prompt_text': text_token, 'prompt_text_len': text_token_len,
                                'llm_prompt_speech_token': speech_token, 'llm_prompt_speech_token_len': speech_token_len,

@@ -217,7 +217,7 @@ def Dataset(data_dir,
         add_one_data(data_dir)
 
     valid_utt_list = list(utt2wav.keys())
-    if len(utt2text) != 0:
+    if len(utt2text) != 0 and mode=='train':
         valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
     logging.info(f"Total utts: {len(valid_utt_list)}")
 

@@ -203,8 +203,6 @@ data_pipeline: [
 infer_data_pipeline: [
     !ref <filter>,
     !ref <resample>,
-    !ref <truncate>,
-    !ref <transcribe>,
     !ref <tokenize>,
     !ref <compute_fbank>,
     !ref <batch>,
