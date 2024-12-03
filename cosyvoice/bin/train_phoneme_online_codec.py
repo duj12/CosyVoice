@@ -39,14 +39,7 @@ from cosyvoice.utils.train_utils import (
     wrap_cuda_model, check_modify_and_save_config)
 
 import s3tokenizer
-
-import sys
-# local codec model and code
-sys.path.append(".")
-from facodec.facodecInfer import FACodecInfer
-# local spk_emb model
-sys.path.append("/data/megastore/Projects/DuJing/code/vits_new")
-from vits.model.models import SpeakerEmbedding
+from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
 
 def get_args():
     parser = argparse.ArgumentParser(description='training your network')
@@ -147,6 +140,10 @@ def freeze(model):
 
 def init_codec_and_embed_model(configs, rank):
     if configs['codec_type'] == 'facodec':
+        import sys
+        # local codec model and code
+        sys.path.append(".")
+        from facodec.facodecInfer import FACodecInfer
         codec_model = FACodecInfer().cuda(rank)
     else:
         codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')

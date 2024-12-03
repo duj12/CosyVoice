@@ -30,14 +30,6 @@ from cosyvoice.utils.executor_online_codec import get_codec_and_spkemb
 from cosyvoice.bin.train_online_codec import init_codec_and_embed_model
 from cosyvoice.dataset.dataset_kaldidata import Dataset
 
-import s3tokenizer
-import sys
-# local codec model and code
-sys.path.append(".")
-from facodec.facodecInfer import FACodecInfer
-# local spk_emb model
-sys.path.append("/data/megastore/Projects/DuJing/code/vits_new")
-from vits.model.models import SpeakerEmbedding
 
 def get_args():
     parser = argparse.ArgumentParser(description='inference with your model')
