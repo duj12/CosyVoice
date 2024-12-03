@@ -21,7 +21,7 @@ ENG_LAUGHTER_DIC = {'haa15': 'haa', 'hee15': 'hee', 'hnn15': 'hnn', 'hii15': 'hi
 CUR_DIR = os.path.dirname(__file__)
 
 laugh2pho = {v: k for k, v in ENG_LAUGHTER_DIC.items()}
-with open('cosyvoice/tokenizer/assets/tanci.json', 'r', encoding='utf-8') as fin:
+with open(f'{CUR_DIR}/assets/tanci.json', 'r', encoding='utf-8') as fin:
     interjection2pho = json.load(fin)
 
 def get_token2phoneme_list(result, token_length):
