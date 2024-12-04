@@ -111,7 +111,8 @@ class MaskedDiffWithXvec(torch.nn.Module):
                   prompt_feat_len,
                   embedding,
                   flow_cache,
-                  sample_rate,):
+                  sample_rate,
+                  n_timesteps=10):
         assert token.shape[0] == 1
 
         # xvec projection
@@ -141,7 +142,7 @@ class MaskedDiffWithXvec(torch.nn.Module):
             mask=mask.unsqueeze(1),
             spks=embedding,
             cond=conds,
-            n_timesteps=10,
+            n_timesteps=n_timesteps,
             prompt_len=mel_len1,
             flow_cache=flow_cache
         )
