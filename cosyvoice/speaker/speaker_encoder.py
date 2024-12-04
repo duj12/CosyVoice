@@ -93,7 +93,7 @@ class SpeakerEmbedding(nn.Module):
         else:
             self.freeze_BN = True   # BatchNorm 在使用的时候一定要注意设成eval模式
         if self.freeze_BN:
-            logger.info(f"SpeakerEmbeding Mudule Freeze the BN layer")
+            logger.info(f"SpeakerEmbedding Module Freeze the BN layer")
             for m in self.modules():
                 freeze_BN_layer(m)
 

@@ -135,7 +135,7 @@ hift: !new:cosyvoice.hifigan.generator.HiFTGenerator
         cond_channels: 512
 
 # gan related module
-mel_spec_transform1: !name:matcha.utils.audio.mel_spectrogram
+mel_spec_transform1: !name:cosyvoice.dataset.processor_kaldidata.mel_spectrogram
     n_fft: 1024
     num_mels: 80
     sampling_rate: !ref <sample_rate>
@@ -147,7 +147,7 @@ mel_spec_transform1: !name:matcha.utils.audio.mel_spectrogram
 hifigan: !new:cosyvoice.hifigan.hifigan.HiFiGan
     generator: !ref <hift>
     discriminator: !new:cosyvoice.hifigan.discriminator.MultipleDiscriminator
-        mpd: !new:matcha.hifigan.models.MultiPeriodDiscriminator
+        mpd: !new:cosyvoice.hifigan.discriminator.MultiPeriodDiscriminator
         mrd: !new:cosyvoice.hifigan.discriminator.MultiResolutionDiscriminator
     mel_spec_transform: [
         !ref <mel_spec_transform1>
@@ -174,7 +174,7 @@ resample: !name:cosyvoice.dataset.processor_kaldidata.resample
     resample_rate: !ref <sample_rate>
 truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
     truncate_length: 24576 # must be a multiplier of hop_size
-feat_extractor: !name:matcha.utils.audio.mel_spectrogram
+feat_extractor: !name:cosyvoice.dataset.processor_kaldidata.mel_spectrogram
     n_fft: 1024
     num_mels: 80
     sampling_rate: !ref <sample_rate>
