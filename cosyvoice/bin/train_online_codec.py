@@ -25,21 +25,16 @@ import torch.distributed as dist
 import deepspeed
 
 from hyperpyyaml import load_hyperpyyaml
-
 from torch.distributed.elastic.multiprocessing.errors import record
-
 from cosyvoice.utils.executor_online_codec import Executor
-from cosyvoice.dataset.dataset_kaldidata import Dataset
-from torch.utils.data import DataLoader
-
 from cosyvoice.utils.train_utils import (
-    init_distributed,
-    init_optimizer_and_scheduler,
+    init_distributed,  init_optimizer_and_scheduler,
     init_summarywriter, save_model,
-    wrap_cuda_model, check_modify_and_save_config)
+    wrap_cuda_model, check_modify_and_save_config,
+    get_latest_ckpt, get_resume_params,
+    init_kaldi_dataset, init_codec_and_embed_model
+)
 
-import s3tokenizer
-from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
 
 def get_args():
     parser = argparse.ArgumentParser(description='training your network')
@@ -91,72 +86,6 @@ def get_args():
     args = parser.parse_args()
     return args
 
-
-def init_dataset_and_dataloader(args, configs, gan, train_data_indexes):
-    data_pipeline = configs['data_pipeline_gan'] if gan is True else configs['data_pipeline']
-
-    train_data = [configs['train_data'][i] for i in train_data_indexes]
-
-    train_dataset = Dataset(train_data, data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=True, partition=True)
-    cv_dataset = Dataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=False)
-
-    # do not use persistent_workers=True, as whisper tokenizer opens tiktoken file each time when the for loop starts
-    train_data_loader = DataLoader(train_dataset,
-                                   batch_size=None,
-                                   pin_memory=args.pin_memory,
-                                   num_workers=args.num_workers,
-                                   prefetch_factor=args.prefetch)
-    cv_data_loader = DataLoader(cv_dataset,
-                                batch_size=None,
-                                pin_memory=args.pin_memory,
-                                num_workers=args.num_workers,
-                                prefetch_factor=args.prefetch)
-    return train_dataset, cv_dataset, train_data_loader, cv_data_loader
-
-def get_latest_ckpt(ckpt_dir, regex="epoch_*.pt"):
-    import glob
-    f_list = glob.glob(os.path.join(ckpt_dir, regex))
-    f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
-    if len(f_list) != 0:
-        x = f_list[-1]
-        epoch = x.split("epoch_")[1].split("_")[0]
-        y = f"{ckpt_dir}/epoch_{epoch}_whole.pt"
-        if os.path.exists(y):
-            x = y
-        return x
-    else:
-        return "failed to find latest_checkpoint_path:" \
-               + os.path.join(ckpt_dir, regex)
-
-def get_resume_params(yaml_path):
-    with open(yaml_path, 'r', encoding='utf-8') as file:
-        info_dict = load_hyperpyyaml(file)
-    return info_dict
-
-def freeze(model):
-    for _, param in model.named_parameters():
-        param.requires_grad = False
-    return model
-
-def init_codec_and_embed_model(configs, rank=0):
-    if configs['codec_type'] == 'facodec':
-        import sys
-        # local codec model
-        sys.path.append(".")
-        from facodec.facodecInfer import FACodecInfer
-        codec_model = FACodecInfer().cuda(rank)
-    else:
-        codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
-        codec_model.init_from_onnx(
-            "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx")
-        codec_model = codec_model.cuda(rank)
-
-    spkemb_model = SpeakerEmbedding(
-        ckpt_path="/data/megastore/Projects/DuJing/code/vits_new/egs/art_codec/speaker_encoder/speaker_encoder.pt").cuda(rank)
-
-    codec_model = freeze(codec_model)
-    spkemb_model = freeze(spkemb_model)
-    return codec_model, spkemb_model
 
 @record
 def main():
@@ -268,7 +197,7 @@ def main():
         for data_indexes in configs['train_data_indexes']:
             # Get dataset & dataloader
             train_dataset, cv_dataset, train_data_loader, cv_data_loader = \
-                init_dataset_and_dataloader(args, configs, gan, data_indexes)
+                init_kaldi_dataset(args, configs, gan, data_indexes)
 
             train_dataset.set_epoch(epoch)
             dist.barrier()

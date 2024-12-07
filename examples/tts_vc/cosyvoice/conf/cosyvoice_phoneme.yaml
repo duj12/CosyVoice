@@ -12,6 +12,9 @@ llm_input_size: 1024
 llm_output_size: 1024
 spk_embed_dim: 512
 
+s3tokenizer_ckpt: "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx"
+speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
+
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
@@ -381,6 +384,36 @@ train_data: [
     [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.7.vits.json",0,1 ],
     [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.8.vits.json",0,1 ],
     [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.9.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240930/20240930.nomfa.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240930_en/20240930_en.nomfa.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20241007/20241007.nomfa.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20241007_en/20241007_en.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.0.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.1.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.2.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.3.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.0.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.1.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.2.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.3.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.4.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.5.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021_en/20241021_en.0.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.3.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021_en/20241021_en.1.nomfa.json",1,1 ],
+
 ]
 
 train_data_indexes0: [
@@ -401,7 +434,11 @@ train_data_indexes: [
     [66,67], [68,69], [70,71], [72,73], [74,75],
     [136,137], [138,139], [140,141],
     [76,77], [78,79], [80,81], [82,83], [84,85],
-    [6,7], [8,9], [10,11], [12,13], [14,15]
+    [6,7], [8,9], [10,11], [12,13], [14,15],
+    [142,143], [144,145],
+    [146,147], [148,149], [150,151], [152,153], [154,155],
+    [156,157],
+
 ]
 
 cv_data: [

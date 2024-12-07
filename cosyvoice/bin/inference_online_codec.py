@@ -27,7 +27,7 @@ from hyperpyyaml import load_hyperpyyaml
 from tqdm import tqdm
 from cosyvoice.cli.model import CosyVoiceModel
 from cosyvoice.utils.executor_online_codec import get_codec_and_spkemb
-from cosyvoice.bin.train_online_codec import init_codec_and_embed_model
+from cosyvoice.utils.train_utils import init_codec_and_embed_model
 from cosyvoice.dataset.dataset_kaldidata import Dataset
 
 

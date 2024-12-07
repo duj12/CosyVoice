@@ -1,6 +1,7 @@
 # Copyright (c) 2021 Mobvoi Inc. (authors: Binbin Zhang)
 #               2023 Horizon Inc. (authors: Xingchen Song)
 #               2024 Alibaba Inc (authors: Xiang Lyu)
+#                    Jing Du
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +33,13 @@ from torch.nn.utils import clip_grad_norm_
 
 from deepspeed.runtime.zero.stage_1_and_2 import estimate_zero2_model_states_mem_needs_all_live
 
+from hyperpyyaml import load_hyperpyyaml
 from cosyvoice.dataset.dataset import Dataset
 from cosyvoice.utils.scheduler import WarmupLR, NoamHoldAnnealing, ConstantLR
+from cosyvoice.dataset.dataset_kaldidata import Dataset as KaldiDataset
+from cosyvoice.dataset.dataset_jsondata import Dataset as JsonDataset
+import s3tokenizer
+from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
 
 
 def init_distributed(args):
@@ -342,3 +348,83 @@ def log_per_save(writer, info_dict):
             writer.add_scalar('{}/{}'.format(tag, k), info_dict[k], step + 1)
         for k, v in loss_dict.items():
             writer.add_scalar('{}/{}'.format(tag, k), v, step + 1)
+
+def init_kaldi_dataset(args, configs, gan, train_data_indexes):
+    data_pipeline = configs['data_pipeline_gan'] if gan is True else configs['data_pipeline']
+
+    train_data = [configs['train_data'][i] for i in train_data_indexes]
+
+    train_dataset = KaldiDataset(train_data, data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=True, partition=True)
+    cv_dataset = KaldiDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=False)
+
+    # do not use persistent_workers=True, as whisper tokenizer opens tiktoken file each time when the for loop starts
+    train_data_loader = DataLoader(train_dataset,
+                                   batch_size=None,
+                                   pin_memory=args.pin_memory,
+                                   num_workers=args.num_workers,
+                                   prefetch_factor=args.prefetch)
+    cv_data_loader = DataLoader(cv_dataset,
+                                batch_size=None,
+                                pin_memory=args.pin_memory,
+                                num_workers=args.num_workers,
+                                prefetch_factor=args.prefetch)
+    return train_dataset, cv_dataset, train_data_loader, cv_data_loader
+
+def init_json_dataset(args, configs, gan, train_data_indexes):
+    data_pipeline = configs['data_pipeline_gan'] if gan is True else configs['data_pipeline']
+
+    train_data = [configs['train_data'][i] for i in train_data_indexes]
+
+    train_dataset = JsonDataset(train_data, data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=True, partition=True)
+    cv_dataset = JsonDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=False)
+
+    # do not use persistent_workers=True, as whisper tokenizer opens tiktoken file each time when the for loop starts
+    train_data_loader = DataLoader(train_dataset,
+                                   batch_size=None,
+                                   pin_memory=args.pin_memory,
+                                   num_workers=args.num_workers,
+                                   prefetch_factor=args.prefetch)
+    cv_data_loader = DataLoader(cv_dataset,
+                                batch_size=None,
+                                pin_memory=args.pin_memory,
+                                num_workers=args.num_workers,
+                                prefetch_factor=args.prefetch)
+    return train_dataset, cv_dataset, train_data_loader, cv_data_loader
+
+def get_latest_ckpt(ckpt_dir, regex="epoch_*.pt"):
+    import glob
+    f_list = glob.glob(os.path.join(ckpt_dir, regex))
+    f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
+    if len(f_list) != 0:
+        x = f_list[-1]
+        epoch = x.split("epoch_")[1].split("_")[0]
+        y = f"{ckpt_dir}/epoch_{epoch}_whole.pt"
+        if os.path.exists(y):
+            x = y
+        return x
+    else:
+        return "failed to find latest_checkpoint_path:" \
+               + os.path.join(ckpt_dir, regex)
+
+def get_resume_params(yaml_path):
+    with open(yaml_path, 'r', encoding='utf-8') as file:
+        info_dict = load_hyperpyyaml(file)
+    return info_dict
+
+def freeze(model):
+    for _, param in model.named_parameters():
+        param.requires_grad = False
+    return model
+
+def init_codec_and_embed_model(configs, rank=0):
+    codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
+    codec_model.init_from_onnx(configs['s3tokenizer_ckpt'])
+    logging.info(f"loaded codec model ckpt {configs['s3tokenizer_ckpt']}")
+    codec_model = codec_model.cuda(rank)
+
+    spkemb_model = SpeakerEmbedding(
+        ckpt_path=configs['speaker_encoder_ckpt']).cuda(rank)
+
+    codec_model = freeze(codec_model)
+    spkemb_model = freeze(spkemb_model)
+    return codec_model, spkemb_model

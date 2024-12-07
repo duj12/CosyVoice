@@ -97,8 +97,8 @@ class Executor:
                 info_dict["step"] = self.step
                 info_dict["epoch"] = self.epoch
                 info_dict["batch_idx"] = batch_idx
-                if cosyvoice_join(group_join, info_dict):
-                    break
+                # if cosyvoice_join(group_join, info_dict):
+                #     break
 
                 # Disable gradient synchronizations across DDP processes.
                 # Within this context, gradients will be accumulated on module
@@ -153,8 +153,8 @@ class Executor:
                 info_dict["step"] = self.step
                 info_dict["epoch"] = self.epoch
                 info_dict["batch_idx"] = batch_idx
-                if cosyvoice_join(group_join, info_dict):
-                    break
+                # if cosyvoice_join(group_join, info_dict):
+                #     break
 
                 # Disable gradient synchronizations across DDP processes.
                 # Within this context, gradients will be accumulated on module
