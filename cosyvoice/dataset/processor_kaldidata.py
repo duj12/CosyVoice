@@ -122,20 +122,22 @@ def filter(data,
             if num_frames > max_length:
                 logging.warning(f"{sample['wav']} more than {max_length} frame(1s=100f)")
                 continue
-            if len(sample['text_token']) < token_min_length:
-                logging.warning(f"utt: {sample['utt']}, text: {sample['text']} less than {token_min_length}")
-                continue
-            if len(sample['text_token']) > token_max_length:
-                logging.warning(f"utt: {sample['utt']}, text: {sample['text']} more than {token_max_length}")
-                continue
 
-            if num_frames != 0:
-                if len(sample['text_token']) / num_frames < min_output_input_ratio:
-                    logging.warning(f"utt: {sample['utt']}, text to audio frame ratio less than {min_output_input_ratio}")
+            if 'text_token' in sample:
+                if len(sample['text_token']) < token_min_length:
+                    logging.warning(f"utt: {sample['utt']}, text: {sample['text']} less than {token_min_length}")
                     continue
-                if len(sample['text_token']) / num_frames > max_output_input_ratio:
-                    logging.warning(f"utt: {sample['utt']}, text to audio frame ratio more than {max_output_input_ratio}")
+                if len(sample['text_token']) > token_max_length:
+                    logging.warning(f"utt: {sample['utt']}, text: {sample['text']} more than {token_max_length}")
                     continue
+
+                if num_frames != 0:
+                    if len(sample['text_token']) / num_frames < min_output_input_ratio:
+                        logging.warning(f"utt: {sample['utt']}, text to audio frame ratio less than {min_output_input_ratio}")
+                        continue
+                    if len(sample['text_token']) / num_frames > max_output_input_ratio:
+                        logging.warning(f"utt: {sample['utt']}, text to audio frame ratio more than {max_output_input_ratio}")
+                        continue
             yield sample
 
 def transcribe(data, get_transcriber, mode='inference'):
@@ -490,7 +492,7 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
                 "speech_feat_len": speech_feat_len,
             })
 
-        if 'text' in sample[0]:
+        if 'text_token' in sample[0]:
             text = [sample[i]['text'] for i in order]
             text_token = [torch.tensor(sample[i]['text_token']) for i in order]
             text_token_len = torch.tensor([i.size(0) for i in text_token], dtype=torch.int32)

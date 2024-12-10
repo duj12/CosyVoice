@@ -6,9 +6,9 @@ stage=0
 stop_stage=0
 
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
-pretrained_model_dir=exp/cosyvoice/flow/torch_ddp
+pretrained_model_dir=exp/cosyvoice/flow_15w/torch_ddp
 # train flow
-export CUDA_VISIBLE_DEVICES="1,2,3"
+export CUDA_VISIBLE_DEVICES="4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
@@ -22,14 +22,14 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
 portnum=3000
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
-  for model in flow; do
-    OMP_NUM_THREADS=4 PYTHONPATH=$PYTHONPATH:../../../third_party/Matcha-TTS \
+  for model in flow_15w; do
+    OMP_NUM_THREADS=4  \
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
       --master_port $portnum  \
-      cosyvoice/bin/train_online_codec.py \
+      cosyvoice/bin/train_phoneme_online_codec.py \
       --train_engine $train_engine \
       --config conf/cosyvoice_flow.yaml \
-      --model $model \
+      --model flow \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
       --tensorboard_dir `pwd`/tensorboard/cosyvoice/$model/$train_engine \
