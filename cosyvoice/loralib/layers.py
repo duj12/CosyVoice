@@ -9,6 +9,11 @@ import torch.nn.functional as F
 import math
 from typing import Optional, List
 
+from torch.version import __version__ as __torch_version
+
+torch_version_list = __torch_version.split('.')
+torch_version = '.'.join(torch_version_list[0:2])
+
 class LoRALayer():
     def __init__(
         self, 
@@ -27,6 +32,7 @@ class LoRALayer():
         # Mark the weight as unmerged
         self.merged = False
         self.merge_weights = merge_weights
+        self.infer_base_model = False   # 为True时，只对基座模型进行推理
 
 
 class Embedding(nn.Embedding, LoRALayer):
@@ -97,22 +103,6 @@ class Embedding(nn.Embedding, LoRALayer):
             else:
                 assert(0)
 
-    def unmerge_parameters(self):
-        if self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                self.weight.data -= (self.lora_B @ self.lora_A).transpose(0, 1) * self.scaling
-            self.merged = False
-        return
-    
-    def merge_parameters(self):
-        if not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += (self.lora_B @ self.lora_A).transpose(0, 1) * self.scaling
-            self.merged = True
-        return
-    
     def train(self, mode: bool = True):
         nn.Embedding.train(self, mode)
         if mode:
@@ -129,7 +119,7 @@ class Embedding(nn.Embedding, LoRALayer):
                 self.merged = True
         
     def forward(self, x: torch.Tensor):
-        if self.r > 0 and not self.merged:
+        if self.r > 0 and not self.merged and not self.infer_base_model:
             result = nn.Embedding.forward(self, x)
             after_A = F.embedding(
                 x, self.lora_A.transpose(0, 1), self.padding_idx, self.max_norm,
@@ -168,8 +158,7 @@ class Linear(nn.Linear, LoRALayer):
             self.scaling = self.lora_alpha / self.r if "noscale" not in lora_init_weights else 1.0
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
-            if "cachewnorm" in lora_init_weights:
-                self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
+        
         # init 
         nn.Linear.reset_parameters(self)
         self.lora_init_weights = lora_init_weights
@@ -207,8 +196,8 @@ class Linear(nn.Linear, LoRALayer):
                 self.lora_B.data = lora_B
                 dtype = self.weight.dtype
                 if "cachewnorm" in self.lora_init_weights:
-                    self.weight_cache.data = (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-                if "rmwnorm" in self.lora_init_weights: ### NOTE 去除weight_norm后就可以减去svd分解
+                    self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
+                else:
                     weight = self.weight.data - self.scaling * lora_B @ lora_A
                     weight = weight.to(dtype)
                     self.weight.data = weight
@@ -220,49 +209,32 @@ class Linear(nn.Linear, LoRALayer):
             else:
                 assert(0)
 
-    def T(self, w):
-        return w.transpose(0, 1) if self.fan_in_fan_out else w
-    
-    def unmerge_parameters(self):
-        if self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                self.weight.data -= self.T(self.lora_B @ self.lora_A) * self.scaling
-            self.merged = False
-        return
-    
-    def merge_parameters(self):
-        if not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                self.weight.data += self.T(self.lora_B @ self.lora_A) * self.scaling
-            self.merged = True
-        return
-
     def train(self, mode: bool = True):
+        def T(w):
+            return w.transpose(0, 1) if self.fan_in_fan_out else w
         nn.Linear.train(self, mode)
         if mode:
             if self.merge_weights and self.merged:
                 # Make sure that the weights are not merged
                 if self.r > 0:
-                    self.weight.data -= self.T(self.lora_B @ self.lora_A) * self.scaling
+                    self.weight.data -= T(self.lora_B @ self.lora_A) * self.scaling
                 self.merged = False
         else:
             if self.merge_weights and not self.merged:
                 # Merge the weights and mark it
                 if self.r > 0:
-                    self.weight.data += self.T(self.lora_B @ self.lora_A) * self.scaling
+                    self.weight.data += T(self.lora_B @ self.lora_A) * self.scaling
                 self.merged = True       
 
     def forward(self, x: torch.Tensor):
         def T(w):
             return w.transpose(0, 1) if self.fan_in_fan_out else w
-        if self.r > 0 and not self.merged:
-            if "cachewnorm" in self.lora_init_weights and not "rmwnorm" in self.lora_init_weights:
+        if self.r > 0 and not self.merged and not self.infer_base_model:
+            if "cachewnorm" in self.lora_init_weights:
                 result = F.linear(x, T(self.weight), bias=self.bias)
                 result -= F.linear(x, T(self.weight_cache), bias=self.bias)
                 result += (self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)) * self.scaling
-            else: ### NOTE 常规的或去除wnorm的pissa
+            else:
                 result = F.linear(x, T(self.weight), bias=self.bias)            
                 result += (self.lora_dropout(x) @ self.lora_A.transpose(0, 1) @ self.lora_B.transpose(0, 1)) * self.scaling
             return result
@@ -306,8 +278,6 @@ class ConvLoRA(nn.Module, LoRALayer):
             self.lora_B = nn.Parameter(self.weight.new_zeros((out_channels//self.groups, self.r)))
 
             self.scaling = self.lora_alpha / self.r if "noscale" not in lora_init_weights else 1.0
-            if "cachewnorm" in lora_init_weights:
-                    self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
         
@@ -345,12 +315,12 @@ class ConvLoRA(nn.Module, LoRALayer):
                 
                 lora_A = torch.diag(torch.sqrt(Sr)) @ Uhr
                 lora_B = Vr @ torch.diag(torch.sqrt(Sr))
-                if self.lora_A.data.size() != lora_A.size() or self.lora_B.data.size() != lora_B.size():
-                    print("self.weight.data.size(), weight.size()", self.weight.data.size(), weight.size())
-                    print("V.size(), S.size(), Uh.size()", V.size(), S.size(), Uh.size())
-                    print("self.lora_A={},self.lora_B={},lora_A={},lora_B={}".format(self.lora_A.data.size(), self.lora_B.data.size(), lora_A.size(), lora_B.size()))
-                    print("self.r,c,h,w", self.r,c,h,w)
-                    assert(0)
+                # if self.lora_A.data.size() != lora_A.size() or self.lora_B.data.size() != lora_B.size():
+                #     print("self.weight.data.size(), weight.size()", self.weight.data.size(), weight.size())
+                #     print("V.size(), S.size(), Uh.size()", V.size(), S.size(), Uh.size())
+                #     print("self.lora_A={},self.lora_B={},lora_A={},lora_B={}".format(self.lora_A.data.size(), self.lora_B.data.size(), lora_A.size(), lora_B.size()))
+                #     print("self.r,c,h,w", self.r,c,h,w)
+                #     assert(0)
                 # else:
                 #     print("lora_A={},lora_B={}".format(lora_A.size(), lora_B.size()))
                     
@@ -358,8 +328,8 @@ class ConvLoRA(nn.Module, LoRALayer):
                 self.lora_B.data = lora_B#[:,:,None,None]
                 dtype = self.weight.dtype
                 if "cachewnorm" in self.lora_init_weights:
-                    self.weight_cache.data = (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-                if "rmwnorm" in self.lora_init_weights:
+                    self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
+                else:
                     weight = self.weight.data - (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
                     weight = weight.to(dtype)
                     self.weight.data = weight
@@ -373,26 +343,6 @@ class ConvLoRA(nn.Module, LoRALayer):
             else:
                 assert(0)
 
-    def unmerge_parameters(self):
-        if self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                # Make sure that the weights are not merged
-                self.weight = self.weight.to(self.lora_B.device)
-                self.weight.data -= (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-            self.merged = False
-        return
-    
-    def merge_parameters(self):
-        if not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                # Merge the weights and mark it
-                self.weight = self.weight.to(self.lora_B.device)
-                self.weight.data += (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-            self.merged = True
-        return
-    
     def train(self, mode=True):
         super(ConvLoRA, self).train(mode)
         if mode:
@@ -411,8 +361,8 @@ class ConvLoRA(nn.Module, LoRALayer):
                 self.merged = True
 
     def forward(self, x):
-        if self.r > 0 and not self.merged:
-            if "cachewnorm" in self.lora_init_weights and not "rmwnorm" in self.lora_init_weights:
+        if self.r > 0 and not self.merged and not self.infer_base_model:
+            if "cachewnorm" in self.lora_init_weights:
                 return self._conv_forward(
                     x, 
                     self.weight - self.weight_cache + (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling,
@@ -481,8 +431,6 @@ class ConvTransposeLoRA(nn.Module, LoRALayer):
               self.weight.new_zeros((in_channels, self.r))
             )
             self.scaling = self.lora_alpha / self.r if "noscale" not in lora_init_weights else 1.0
-            if "cachewnorm" in lora_init_weights:
-                self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
         
@@ -520,12 +468,12 @@ class ConvTransposeLoRA(nn.Module, LoRALayer):
                 
                 lora_A = torch.diag(torch.sqrt(Sr)) @ Uhr
                 lora_B = Vr @ torch.diag(torch.sqrt(Sr))
-                if self.lora_A.data.size() != lora_A.size() or self.lora_B.data.size() != lora_B.size():
-                    print("self.weight.data.size(), weight.size()", self.weight.data.size(), weight.size())
-                    print("V.size(), S.size(), Uh.size()", V.size(), S.size(), Uh.size())
-                    print("self.lora_A={},self.lora_B={},lora_A={},lora_B={}".format(self.lora_A.data.size(), self.lora_B.data.size(), lora_A.size(), lora_B.size()))
-                    print("self.r,c,h,w", self.r,c,h,w)
-                    assert(0)
+                # if self.lora_A.data.size() != lora_A.size() or self.lora_B.data.size() != lora_B.size():
+                #     print("self.weight.data.size(), weight.size()", self.weight.data.size(), weight.size())
+                #     print("V.size(), S.size(), Uh.size()", V.size(), S.size(), Uh.size())
+                #     print("self.lora_A={},self.lora_B={},lora_A={},lora_B={}".format(self.lora_A.data.size(), self.lora_B.data.size(), lora_A.size(), lora_B.size()))
+                #     print("self.r,c,h,w", self.r,c,h,w)
+                #     assert(0)
                 # else:
                 #     print("lora_A={},lora_B={}".format(lora_A.size(), lora_B.size()))
 
@@ -533,8 +481,8 @@ class ConvTransposeLoRA(nn.Module, LoRALayer):
                 self.lora_B.data = lora_B#[:,:,None,None]
                 dtype = self.weight.dtype
                 if "cachewnorm" in self.lora_init_weights:
-                    self.weight_cache.data = (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-                if "rmwnorm" in self.lora_init_weights:
+                    self.weight_cache = nn.Parameter((self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling)
+                else:
                     weight = self.weight.data - (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
                     weight = weight.to(dtype)
                     self.weight.data = weight
@@ -548,26 +496,6 @@ class ConvTransposeLoRA(nn.Module, LoRALayer):
             else:
                 assert(0)
 
-    def unmerge_parameters(self):
-        if self.merged:
-            # Make sure that the weights are not merged
-            if self.r > 0:
-                # Make sure that the weights are not merged
-                self.weight = self.weight.to(self.lora_B.device)
-                self.weight.data -= (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-            self.merged = False
-        return
-    
-    def merge_parameters(self):
-        if not self.merged:
-            # Merge the weights and mark it
-            if self.r > 0:
-                # Merge the weights and mark it
-                self.weight = self.weight.to(self.lora_B.device)
-                self.weight.data += (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
-            self.merged = True
-        return
-    
     def train(self, mode=True):
         super(ConvTransposeLoRA, self).train(mode)
         if mode:
@@ -585,21 +513,32 @@ class ConvTransposeLoRA(nn.Module, LoRALayer):
                     self.weight.data += (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling
                 self.merged = True
 
-    def forward(self, x, output_size = None):
-        output_padding = self._output_padding(
-                input = x, 
-                output_size = output_size, 
-                stride=self.stride, 
-                padding=self.padding, 
-                kernel_size=self.kernel_size, 
-                num_spatial_dims=self.num_spatial_dims, ### NOTE 非常坑！torch 1.12这里多了个参数！！！！
+    def forward(self, x, output_size=None):
+        if float(torch_version) >= 1.12:
+            output_padding = self._output_padding(
+                    input=x,
+                    output_size=output_size,
+                    stride=self.stride,
+                    padding=self.padding,
+                    kernel_size=self.kernel_size,
+                    num_spatial_dims=self.num_spatial_dims, ### NOTE 非常坑！torch 1.12这里多了个参数！！！！
+                    dilation=self.dilation
+                )
+        else:
+            output_padding = self._output_padding(
+                input=x,
+                output_size=output_size,
+                stride=self.stride,
+                padding=self.padding,
+                kernel_size=self.kernel_size,
+                # num_spatial_dims=self.num_spatial_dims,  ### NOTE 非常坑！torch 1.12这里多了个参数！！！！
                 dilation=self.dilation
             )
         
-        if self.r > 0 and not self.merged:
+        if self.r > 0 and not self.merged and not self.infer_base_model:
 
             if self.num_spatial_dims==1:
-                if "cachewnorm" in self.lora_init_weights and not "rmwnorm" in self.lora_init_weights:
+                if "cachewnorm" in self.lora_init_weights:
                     return F.conv_transpose1d(
                             x, 
                             self.weight - self.weight_cache + (self.lora_B @ self.lora_A).view(self.weight.shape) * self.scaling, 
