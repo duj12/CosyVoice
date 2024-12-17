@@ -157,7 +157,7 @@ get_tokenizer: !name:cosyvoice.tokenizer.phoneme_tokenizer.get_tokenizer
 tokenize: !name:cosyvoice.dataset.processor_kaldidata.tokenize_phoneme
     get_tokenizer: !ref <get_tokenizer>
 filter: !name:cosyvoice.dataset.processor_kaldidata.filter
-    max_length: 4000  # 100 frame per second
+    max_length: 3600  # 100 frame per second
     min_length: 0
     token_max_length: 512    # phoneme length
     token_min_length: 1

@@ -29,7 +29,7 @@ class PhonemeTokenizer:
         if mode == 'inference':  # hard code frontend model, import from local path
             TTS_root = "/data/megastore/Projects/DuJing/code/TTS"
             sys.path.append(TTS_root)
-            from tts.init_text_frontend import init_text_frontend
+            from tts.frontend.init_text_frontend import init_text_frontend
             if self.cn_frontend_model is None:
                 self.cn_frontend_model = init_text_frontend('hntts')
             if self.en_frontend_model is None:
