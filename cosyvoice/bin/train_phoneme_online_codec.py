@@ -129,7 +129,8 @@ def main():
 
             saved_state_dict = torch.load(args.checkpoint, map_location='cpu')
             new_state_dict = {}
-            if gan:
+            if gan and 'generator.m_source.l_linear.weight' not in saved_state_dict:
+                # 模型参数只保存了generator
                 dest_model = model.generator
                 logging.warning('discriminator is not pretrained!')
             else:
