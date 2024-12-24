@@ -109,20 +109,30 @@ class DistributedSampler:
 
 class DataList(IterableDataset):
 
-    def __init__(self, lists, utt2wav, utt2text, utt2spk, shuffle=True, partition=True, tts_text=None):
+    def __init__(self, lists, utt2wav, utt2text, utt2spk, shuffle=True,
+                 partition=True, tts_text=None, eval=False):
         self.lists = lists
         self.utt2wav = utt2wav
         self.utt2text = utt2text
         self.utt2spk = utt2spk
         self.tts_text = tts_text  # a list, each prompt will generate all texts in the list
-        self.sampler = DistributedSampler(shuffle, partition)
+        if not eval:
+            self.sampler = DistributedSampler(shuffle, partition)
+        else:
+            self.sampler = None
 
     def set_epoch(self, epoch):
-        self.sampler.set_epoch(epoch)
+        if self.sampler is not None:
+            self.sampler.set_epoch(epoch)
 
     def __iter__(self):
-        sampler_info = self.sampler.update()
-        indexes = self.sampler.sample(self.lists)
+        if self.sampler is not None:
+            sampler_info = self.sampler.update()
+            indexes = self.sampler.sample(self.lists)
+        else:
+            sampler_info = {}
+            indexes = range(len(self.lists))
+
         for index in indexes:
             utt = self.lists[index]
             sample = {}
@@ -151,7 +161,8 @@ def Dataset(json_file,
             gan=False,
             shuffle=True,
             partition=True,
-            tts_file=None):
+            tts_file=None,
+            eval=False):
     """ Construct dataset from arguments
 
         json_file is like :
@@ -244,7 +255,8 @@ def Dataset(json_file,
             logging.info(f"read {len(tts_text)} lines from {tts_file}")
 
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2spk,
-                       shuffle=shuffle, partition=partition, tts_text=tts_text)
+                       shuffle=shuffle, partition=partition,
+                       tts_text=tts_text, eval=eval)
 
     if gan is True:
         # map partial arg to padding func in gan mode

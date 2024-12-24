@@ -198,19 +198,20 @@ def init_summarywriter(args):
     return writer
 
 
-def save_model(model, model_name, info_dict):
+def save_model(model, model_name, info_dict, only_yaml=False):
     rank = int(os.environ.get('RANK', 0))
     model_dir = info_dict["model_dir"]
     save_model_path = os.path.join(model_dir, '{}.pt'.format(model_name))
 
-    if info_dict["train_engine"] == "torch_ddp":
-        if rank == 0:
-            torch.save(model.module.state_dict(), save_model_path)
-    else:
-        with torch.no_grad():
-            model.save_checkpoint(save_dir=model_dir,
-                                  tag=model_name,
-                                  client_state=info_dict)
+    if not only_yaml:
+        if info_dict["train_engine"] == "torch_ddp":
+            if rank == 0:
+                torch.save(model.module.state_dict(), save_model_path)
+        else:
+            with torch.no_grad():
+                model.save_checkpoint(save_dir=model_dir,
+                                    tag=model_name,
+                                    client_state=info_dict)
     if rank == 0:
         info_path = re.sub('.pt$', '.yaml', save_model_path)
         info_dict['save_time'] = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
@@ -341,13 +342,13 @@ def log_per_save(writer, info_dict):
     rank = int(os.environ.get('RANK', 0))
     logging.info(
         'Epoch {} Step {} CV info lr {} {} rank {}'.format(
-            epoch, step + 1, lr, rank, ' '.join(['{}_{}'.format(k, v) for k, v in loss_dict.items()])))
+            epoch, step, lr, rank, ' '.join(['{}_{}'.format(k, v) for k, v in loss_dict.items()])))
 
     if writer is not None:
         for k in ['epoch', 'lr']:
-            writer.add_scalar('{}/{}'.format(tag, k), info_dict[k], step + 1)
+            writer.add_scalar('{}/{}'.format(tag, k), info_dict[k], step)
         for k, v in loss_dict.items():
-            writer.add_scalar('{}/{}'.format(tag, k), v, step + 1)
+            writer.add_scalar('{}/{}'.format(tag, k), v, step)
 
 def init_kaldi_dataset(args, configs, gan, train_data_indexes):
     data_pipeline = configs['data_pipeline_gan'] if gan is True else configs['data_pipeline']

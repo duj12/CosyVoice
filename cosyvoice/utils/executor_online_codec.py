@@ -197,16 +197,19 @@ class Executor:
     def cv(self, model, cv_data_loader, writer, info_dict, on_batch_end=True, codec_model=None, spkemb_model=None):
         ''' Cross validation on
         '''
-        logging.info('Epoch {} Step {} on_batch_end {} CV rank {}'.format(self.epoch, self.step + 1, on_batch_end, self.rank))
+        logging.info('Epoch {} Step {} on_batch_end {} CV rank {}'.format(self.epoch, self.step, on_batch_end, self.rank))
         model.eval()
+        info_dict["tag"] = "CV"
+        info_dict["step"] = self.step
+        info_dict["epoch"] = self.epoch
+        info_dict["data_idx"] = self.data_idx
+        model_name = 'epoch_{}_whole'.format(self.epoch) if on_batch_end else 'epoch_{}_step_{}'.format(self.epoch, self.step)
+        # save model first, in case batch evaluate fail, the ckpt will not be saved
+        save_model(model, model_name, info_dict, only_yaml=False)
+
         total_num_utts, total_loss_dict = 0, {}  # avoid division by 0
         for batch_idx, batch_dict in enumerate(cv_data_loader):
-            info_dict["tag"] = "CV"
-            info_dict["step"] = self.step
-            info_dict["epoch"] = self.epoch
             info_dict["batch_idx"] = batch_idx
-            info_dict["data_idx"] = self.data_idx
-
             num_utts = len(batch_dict["utts"])
             total_num_utts += num_utts
 
@@ -229,5 +232,4 @@ class Executor:
             total_loss_dict[k] = sum(v) / total_num_utts
         info_dict['loss_dict'] = total_loss_dict
         log_per_save(writer, info_dict)
-        model_name = 'epoch_{}_whole'.format(self.epoch) if on_batch_end else 'epoch_{}_step_{}'.format(self.epoch, self.step)
-        save_model(model, model_name, info_dict)
+        save_model(model, model_name, info_dict, only_yaml=True)
