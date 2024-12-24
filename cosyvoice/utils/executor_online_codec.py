@@ -21,50 +21,9 @@ import os
 import torch
 import torch.distributed as dist
 
-from cosyvoice.utils.train_utils import update_parameter_and_lr, log_per_step, log_per_save, batch_forward, batch_backward, save_model, cosyvoice_join
-
-
-def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
-                         codec_type="s3tokenizer", sample_rate=24000):
-    wave = batch_dict['speech'].to(codec_model.device)
-    wave_len = batch_dict['speech_len'].to(codec_model.device)
-    with torch.no_grad():
-        if codec_type == 'facodec':
-            enc_out, prosody_latent = codec_model.encode(wave.unsqueeze(1))
-            vq_post_emb, vq_id, spk_embs = codec_model.quantize(
-                enc_out, prosody_latent)
-            codec_speaker_embs = spk_embs  # B D
-            speech_code = vq_id  # B T 6
-            speech_code_len = wave_len // codec_model.fa_en.hop_length
-        else:
-            mels = []
-            import s3tokenizer
-            for i in range(wave.size(0)):
-                audio = wave[i, :wave_len[i]]
-                # whisper speech code use 16k sample_rate
-                if sample_rate != 16000:
-                    import torchaudio
-                    resampler = torchaudio.transforms.Resample(
-                        sample_rate, 16000).to(audio.device)
-                    audio = resampler(audio)
-                mels.append(s3tokenizer.log_mel_spectrogram(audio))
-            mels, mels_lens = s3tokenizer.padding(mels)
-            mels = mels.to(codec_model.device)
-            mels_lens = mels_lens.to(codec_model.device)
-            speech_code, speech_code_len = codec_model.quantize(mels, mels_lens)
-
-        speech_code = speech_code.clone()
-        speech_code_len = speech_code_len.clone()
-
-        # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
-        speaker_embs = spkemb_model(wave.unsqueeze(1), wave_len)  # B D
-
-    batch_dict['speech_token'] = speech_code
-    batch_dict['speech_token_len'] = speech_code_len
-    batch_dict['embedding'] = speaker_embs
-
-    return batch_dict
-
+from cosyvoice.utils.train_utils import (
+    update_parameter_and_lr, log_per_step, log_per_save, batch_forward,
+    batch_backward, save_model, cosyvoice_join, get_codec_and_spkemb)
 
 class Executor:
 
