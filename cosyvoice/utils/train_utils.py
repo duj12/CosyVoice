@@ -210,15 +210,19 @@ def save_model(model, model_name, info_dict, only_yaml=False):
         else:
             with torch.no_grad():
                 model.save_checkpoint(save_dir=model_dir,
-                                    tag=model_name,
-                                    client_state=info_dict)
+                                      tag=model_name,
+                                      client_state=info_dict)
+        if rank == 0:
+            logging.info('[Rank {}] Checkpoint: save to checkpoint {}'.format(
+                rank, save_model_path))
+
     if rank == 0:
         info_path = re.sub('.pt$', '.yaml', save_model_path)
         info_dict['save_time'] = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
         with open(info_path, 'w') as fout:
             data = yaml.dump(info_dict)
             fout.write(data)
-        logging.info('[Rank {}] Checkpoint: save to checkpoint {}'.format(rank, save_model_path))
+        logging.info('[Rank {}] Checkpoint: save to yaml {}'.format(rank, info_path))
 
 
 def cosyvoice_join(group_join, info_dict):
