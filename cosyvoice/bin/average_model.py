@@ -80,10 +80,17 @@ def main():
         print('Processing {}'.format(path))
         states = torch.load(path, map_location=torch.device('cpu'))
         for k in states.keys():
-            if k not in avg.keys():
-                avg[k] = states[k].clone()
+            k1 = k
+            if args.is_hifigan:
+                if not k.startswith('generator'):
+                    continue
+                else:
+                    k1 = k.replace("generator.", "")
+
+            if k1 not in avg.keys():
+                avg[k1] = states[k].clone()
             else:
-                avg[k] += states[k]
+                avg[k1] += states[k]
     # average
     new_dict = {}
     for k in avg.keys():
