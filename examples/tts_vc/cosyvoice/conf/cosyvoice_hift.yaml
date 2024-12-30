@@ -12,7 +12,7 @@ llm_input_size: 1024
 llm_output_size: 1024
 spk_embed_dim: 512
 
-s3tokenizer_ckpt: "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx"
+s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 
 # model params

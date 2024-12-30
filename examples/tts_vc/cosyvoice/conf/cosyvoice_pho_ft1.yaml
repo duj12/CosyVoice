@@ -15,7 +15,7 @@ spk_embed_dim: 512
 # for speaker audio crop, 0 means do not crop。
 spk_audio_crop: 10
 
-s3tokenizer_ckpt: "../../../pretrained_models/CosyVoice-300M-25Hz/speech_tokenizer_v1.onnx"
+s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 
 # model params

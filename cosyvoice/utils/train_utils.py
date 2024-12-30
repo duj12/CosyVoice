@@ -423,11 +423,12 @@ def freeze(model):
 
 def init_codec_and_embed_model(configs, rank=0):
     if configs['codec_type'] == 's3tokenizer':
-        codec_model = s3tokenizer.S3Tokenizer('speech_tokenizer_v1_25hz')
-        codec_model.init_from_onnx(configs['s3tokenizer_ckpt'])
+        codec_model = s3tokenizer.load_model(
+            'speech_tokenizer_v1_25hz', configs['s3tokenizer_ckpt'])
         logging.info(f"loaded codec model ckpt {configs['s3tokenizer_ckpt']}")
     elif configs['codec_type'] == 's3tokenizer-v2':
-        pass
+        codec_model = s3tokenizer.load_model(
+            'speech_tokenizer_v2_25hz', configs['s3tokenizer_ckpt'])
     codec_model = codec_model.cuda(rank)
 
     spkemb_model = SpeakerEmbedding(
@@ -449,7 +450,7 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
             codec_speaker_embs = spk_embs  # B D
             speech_code = vq_id  # B T 6
             speech_code_len = wave_len // codec_model.fa_en.hop_length
-        elif configs['codec_type'] == 's3tokenizer':
+        elif configs['codec_type'].startswith('s3tokenizer'):
             mels = []
             import s3tokenizer
             for i in range(wave.size(0)):
@@ -465,9 +466,6 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
             mels = mels.to(codec_model.device)
             mels_lens = mels_lens.to(codec_model.device)
             speech_code, speech_code_len = codec_model.quantize(mels, mels_lens)
-
-        elif configs['codec_type'] == 's3tokenizer-v2':
-            pass
 
         speech_code = speech_code.clone()
         speech_code_len = speech_code_len.clone()
