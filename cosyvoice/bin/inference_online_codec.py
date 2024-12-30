@@ -81,7 +81,7 @@ def main():
     with torch.no_grad():
         time_start = time.perf_counter()
         for wav_idx, batch in tqdm(enumerate(test_data_loader)):
-            batch = get_codec_and_spkemb(batch, codec_model, spkemb_model, codec_type=configs['codec_type'])
+            batch = get_codec_and_spkemb(batch, codec_model, spkemb_model, configs)
 
             utts = batch["utts"]
             assert len(utts) == 1, "inference mode only support batchsize 1"

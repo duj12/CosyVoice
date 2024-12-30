@@ -50,7 +50,7 @@ def init_distributed(args):
                  ', rank {}, world_size {}'.format(rank, world_size))
     if args.train_engine == 'torch_ddp':
         torch.cuda.set_device(local_rank)
-        dist.init_process_group(args.dist_backend, timeout=datetime.timedelta(seconds=args.timeout))
+        dist.init_process_group(args.dist_backend)
     else:
         deepspeed.init_distributed(dist_backend=args.dist_backend)
     return world_size, local_rank, rank
@@ -438,27 +438,27 @@ def init_codec_and_embed_model(configs, rank=0):
     return codec_model, spkemb_model
 
 def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
-                         codec_type="s3tokenizer", sample_rate=24000):
+                         configs):
     wave = batch_dict['speech'].to(codec_model.device)
     wave_len = batch_dict['speech_len'].to(codec_model.device)
     with torch.no_grad():
-        if codec_type == 'facodec':
+        if configs['codec_type'] == 'facodec':
             enc_out, prosody_latent = codec_model.encode(wave.unsqueeze(1))
             vq_post_emb, vq_id, spk_embs = codec_model.quantize(
                 enc_out, prosody_latent)
             codec_speaker_embs = spk_embs  # B D
             speech_code = vq_id  # B T 6
             speech_code_len = wave_len // codec_model.fa_en.hop_length
-        elif codec_type == 's3tokenizer':
+        elif configs['codec_type'] == 's3tokenizer':
             mels = []
             import s3tokenizer
             for i in range(wave.size(0)):
                 audio = wave[i, :wave_len[i]]
                 # whisper speech code use 16k sample_rate
-                if sample_rate != 16000:
+                if configs['sample_rate'] != 16000:
                     import torchaudio
                     resampler = torchaudio.transforms.Resample(
-                        sample_rate, 16000).to(audio.device)
+                        configs['sample_rate'], 16000).to(audio.device)
                     audio = resampler(audio)
                 mels.append(s3tokenizer.log_mel_spectrogram(audio))
             mels, mels_lens = s3tokenizer.padding(mels)
@@ -466,14 +466,42 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
             mels_lens = mels_lens.to(codec_model.device)
             speech_code, speech_code_len = codec_model.quantize(mels, mels_lens)
 
-        elif codec_type == 's3tokenizer-v2':
+        elif configs['codec_type'] == 's3tokenizer-v2':
             pass
 
         speech_code = speech_code.clone()
         speech_code_len = speech_code_len.clone()
 
+        spk_audio_crop = configs.get('spk_audio_crop', 0)
+        if spk_audio_crop:
+            wave_len = wave_len.to('cpu')
+            crop_length = spk_audio_crop * configs['sample_rate']
+            extracted_waves = []
+            spk_wave_len = []
+            for b, true_length in enumerate(wave_len):
+                if true_length < crop_length:  # 需要拼接至crop_length
+                    repeat_times = (crop_length + wave_len[b] - 1) // wave_len[b]
+                    extracted_wave = torch.cat([wave[b][:true_length]] * repeat_times)
+                    extracted_wave = extracted_wave[:crop_length]
+                    spk_wave_len.append(crop_length)
+                else:
+                    random_length = torch.randint(crop_length, true_length + 1, (1,)).item()
+                    start_idx = torch.randint(0, true_length-random_length+1, (1,)).item()
+                    extracted_wave = wave[b, start_idx:start_idx + random_length]
+                    spk_wave_len.append(random_length)
+
+                extracted_waves.append(extracted_wave)
+
+            from torch.nn.utils.rnn import pad_sequence
+            spk_wave = pad_sequence(extracted_waves, batch_first=True, padding_value=0)
+            spk_wave = spk_wave.to(codec_model.device)
+            spk_wave_len = torch.tensor(spk_wave_len).to(codec_model.device)
+        else:
+            spk_wave = wave
+            spk_wave_len = wave_len
+
         # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
-        speaker_embs = spkemb_model(wave.unsqueeze(1), wave_len)  # B D
+        speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
 
     batch_dict['speech_token'] = speech_code
     batch_dict['speech_token_len'] = speech_code_len

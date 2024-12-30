@@ -72,7 +72,7 @@ class Executor:
                 with context():
                     batch_dict = get_codec_and_spkemb(
                         batch_dict, codec_model, spkemb_model,
-                        self.configs['codec_type'], self.configs['sample_rate'])
+                        self.configs)
 
                     info_dict = batch_forward(model, batch_dict, scaler, info_dict)
                     info_dict = batch_backward(model, scaler, info_dict)
@@ -178,7 +178,7 @@ class Executor:
             if self.gan is False:   # we only need speech token and speaker emb when train llm and flow
                 batch_dict = get_codec_and_spkemb(
                     batch_dict, codec_model, spkemb_model,
-                    self.configs['codec_type'], self.configs['sample_rate'])
+                    self.configs)
 
             info_dict = batch_forward(model, batch_dict, None, info_dict)
 

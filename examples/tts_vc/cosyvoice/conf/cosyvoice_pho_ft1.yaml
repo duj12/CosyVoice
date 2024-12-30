@@ -11,7 +11,6 @@ text_encoder_input_size: 512
 llm_input_size: 1024
 llm_output_size: 1024
 spk_embed_dim: 512
-
 # second of min length, if the duration of a audio is less than this, it will be duplicated.
 # for speaker audio crop, 0 means do not crop。
 spk_audio_crop: 10
@@ -420,11 +419,11 @@ train_data: [
 
 ]
 
-train_data_indexes0: [
+train_data_indexes: [
     [0,1,2,3,4,5]
 ]
 
-train_data_indexes: [
+train_data_indexes1: [
     [16,17], [18,19], [20,21], [22,23], [24,25],
     [156,157], [158,159], [160,161], [162,163], [164,165],
     [166,167],
