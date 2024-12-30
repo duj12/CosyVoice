@@ -381,7 +381,7 @@ def init_json_dataset(args, configs, gan, train_data_indexes):
     train_data = [configs['train_data'][i] for i in train_data_indexes]
 
     train_dataset = JsonDataset(train_data, data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=True, partition=True)
-    cv_dataset = JsonDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=True)
+    cv_dataset = JsonDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=False)
 
     # do not use persistent_workers=True, as whisper tokenizer opens tiktoken file each time when the for loop starts
     train_data_loader = DataLoader(train_dataset,
@@ -391,7 +391,7 @@ def init_json_dataset(args, configs, gan, train_data_indexes):
                                    prefetch_factor=args.prefetch)
     cv_data_loader = DataLoader(cv_dataset,
                                 batch_size=None,
-                                pin_memory=False,
+                                pin_memory=args.pin_memory,
                                 num_workers=0,
                                 prefetch_factor=None)
     return train_dataset, cv_dataset, train_data_loader, cv_data_loader

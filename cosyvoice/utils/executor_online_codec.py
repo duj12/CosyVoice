@@ -82,9 +82,10 @@ class Executor:
                 # NOTE specify save_per_step in cosyvoice.yaml if you want to enable step save
                 if info_dict['save_per_step'] > 0 and (self.step ) % info_dict['save_per_step'] == 0 and \
                    (batch_idx + 1) % info_dict["accum_grad"] == 0:
-                    dist.barrier()
                     self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=False,
                             codec_model=codec_model, spkemb_model=spkemb_model)
+
+                    dist.barrier()
                     model.train()
                 if (batch_idx + 1) % info_dict["accum_grad"] == 0:
                     self.step += 1
@@ -142,9 +143,9 @@ class Executor:
                 # NOTE specify save_per_step in cosyvoice.yaml if you want to enable step save
                 if info_dict['save_per_step'] > 0 and (self.step) % info_dict['save_per_step'] == 0 and \
                    (batch_idx + 1) % info_dict["accum_grad"] == 0:
-                    dist.barrier()
                     self.cv(model, cv_data_loader, writer, info_dict, on_batch_end=False,
                             codec_model=codec_model, spkemb_model=spkemb_model)
+                    dist.barrier()
                     model.train()
                 if (batch_idx + 1) % info_dict["accum_grad"] == 0:
                     self.step += 1

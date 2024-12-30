@@ -113,6 +113,15 @@ def ras_sampling(weighted_scores, decoded_tokens, sampling, top_p=0.8, top_k=25,
         top_ids = random_sampling(weighted_scores, decoded_tokens, sampling)
     return top_ids
 
+def non_random_ras_sampling(weighted_scores, decoded_tokens, sampling,
+                            top_p=0.8, top_k=25, win_size=10, tau_r=0.1,
+                            expand_scale=2):
+    top_ids = nucleus_sampling(weighted_scores, top_p=top_p, top_k=top_k)
+    rep_num = (torch.tensor(decoded_tokens[-win_size:]).to(weighted_scores.device) == top_ids).sum().item()
+    if rep_num >= win_size * tau_r:
+        top_ids = nucleus_sampling(weighted_scores, top_p=top_p, top_k=top_k*expand_scale)
+    return top_ids
+
 
 def nucleus_sampling(weighted_scores, top_p=0.8, top_k=25):
     prob, indices = [], []
