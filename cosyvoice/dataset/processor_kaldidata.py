@@ -369,12 +369,12 @@ def sort(data, sort_size=500, mode='train'):
     for sample in data:
         buf.append(sample)
         if len(buf) >= sort_size:
-            buf.sort(key=lambda x: x['speech_feat'].size(0))
+            buf.sort(key=lambda x: x['speech_feat'].size(0), reverse=True)
             for x in buf:
                 yield x
             buf = []
     # The sample left over
-    buf.sort(key=lambda x: x['speech_feat'].size(0))
+    buf.sort(key=lambda x: x['speech_feat'].size(0), reverse=True)
     for x in buf:
         yield x
 

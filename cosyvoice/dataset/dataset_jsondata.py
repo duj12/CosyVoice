@@ -138,6 +138,9 @@ class DataList(IterableDataset):
             sample = {}
             sample['utt'] = utt
             sample['wav'] = self.utt2wav[utt]
+            if utt not in self.utt2text:
+                logging.warning(f'key {utt} not in self.utt2text. jumped.')
+                continue
             sample['text'] = self.utt2text[utt]
             if utt in self.utt2spk:
                 sample['spk'] = self.utt2spk[utt]
@@ -211,7 +214,7 @@ def Dataset(json_file,
     utt2wav = {}
     utt2text = {}
     utt2spk = {}
-
+    valid_utt_list = []
     def add_one_data(json_file):
         logging.info(f"Loading data: {json_file}")
         if isinstance(json_file, list):
@@ -233,9 +236,12 @@ def Dataset(json_file,
                 utt2wav[utt] = wav_path
                 utt2text[utt] = text
                 utt2spk[utt] = sid
+                valid_utt_list.append(utt)
+                # if len(text) < 10:  # 对音素序列长度低于10的音频富采样
+                #     valid_utt_list.extend([utt]*10)
 
         del dataset_info
-        logging.info(f"Current utts: {len(utt2wav.keys())}")
+        logging.info(f"Current utts: {len(utt2wav.keys())}. Actual samples {len(valid_utt_list)}")
 
     if isinstance(json_file, list):
         for sub_data in json_file:
@@ -243,7 +249,7 @@ def Dataset(json_file,
     else:
         add_one_data(json_file)
 
-    valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    # valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
 
     tts_text = None
     if mode=="inference" and os.path.exists(tts_file):

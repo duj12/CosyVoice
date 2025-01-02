@@ -1,8 +1,8 @@
-from funasr import AutoModel
-from funasr.utils.postprocess_utils import rich_transcription_postprocess
+
 
 class Transcriber:
     def __init__(self, model="iic/SenseVoiceSmall", device="cuda:0"):
+        from funasr import AutoModel
         self.model = AutoModel(
             model="iic/SenseVoiceSmall",
             trust_remote_code=False,
@@ -13,6 +13,8 @@ class Transcriber:
 
 
     def transcribe(self, speech_or_path):
+        from funasr.utils.postprocess_utils import \
+            rich_transcription_postprocess
         res = self.model.generate(
             input=speech_or_path,
             cache={},
