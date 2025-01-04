@@ -17,7 +17,7 @@ from __future__ import print_function
 import argparse
 import datetime
 import logging
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('numba').setLevel(logging.WARNING)
 from copy import deepcopy
 import os
 import torch
