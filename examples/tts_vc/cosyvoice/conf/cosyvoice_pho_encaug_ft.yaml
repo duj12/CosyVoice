@@ -12,8 +12,7 @@ llm_input_size: 1024
 llm_output_size: 1024
 spk_embed_dim: 512
 # second of min length, if the duration of a audio is less than this, it will be duplicated.
-# for speaker audio crop, 0 means do not crop。
-spk_audio_crop: 10
+spk_audio_crop: 10  # for speaker audio crop, 0 means do not crop。
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
@@ -21,7 +20,7 @@ speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme
+llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme_SpkAdapt
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -39,8 +38,9 @@ llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
+    text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder_SpkAdapt
         input_size: !ref <text_encoder_input_size>
+        spk_emb_size: !ref <spk_embed_dim>
         output_size: 1024
         attention_heads: 16
         linear_units: 4096

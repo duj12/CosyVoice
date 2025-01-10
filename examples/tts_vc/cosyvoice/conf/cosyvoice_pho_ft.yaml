@@ -14,6 +14,8 @@ spk_embed_dim: 512
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
+# second of min length, if the duration of a audio is less than this, it will be duplicated.
+spk_audio_crop: 10  # for speaker audio crop, 0 means do not crop。
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.

@@ -1,6 +1,7 @@
 # Copyright (c) 2021 Mobvoi Inc (Binbin Zhang, Di Wu)
 #               2022 Xingchen Song (sxc19@mails.tsinghua.edu.cn)
 #               2024 Alibaba Inc (Xiang Lyu)
+#               2024 Jing Du
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +23,7 @@ import torch.utils.checkpoint as ckpt
 
 from cosyvoice.transformer.convolution import ConvolutionModule
 from cosyvoice.transformer.encoder_layer import TransformerEncoderLayer
-from cosyvoice.transformer.encoder_layer import ConformerEncoderLayer
+from cosyvoice.transformer.encoder_layer import ConformerEncoderLayer, ConformerEncoderLayer_SpkAdapt
 from cosyvoice.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from cosyvoice.utils.class_utils import (
     COSYVOICE_EMB_CLASSES,
@@ -472,3 +473,158 @@ class ConformerEncoder(BaseEncoder):
                 normalize_before,
             ) for _ in range(num_blocks)
         ])
+
+
+class ConformerEncoder_SpkAdapt(BaseEncoder):
+    """Conformer encoder module."""
+
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int = 256,
+        spk_emb_size: int = 512,
+        attention_heads: int = 4,
+        linear_units: int = 2048,
+        num_blocks: int = 6,
+        dropout_rate: float = 0.1,
+        positional_dropout_rate: float = 0.1,
+        attention_dropout_rate: float = 0.0,
+        input_layer: str = "conv2d",
+        pos_enc_layer_type: str = "rel_pos",
+        normalize_before: bool = True,
+        static_chunk_size: int = 0,
+        use_dynamic_chunk: bool = False,
+        global_cmvn: torch.nn.Module = None,
+        use_dynamic_left_chunk: bool = False,
+        positionwise_conv_kernel_size: int = 1,
+        macaron_style: bool = True,
+        selfattention_layer_type: str = "rel_selfattn",
+        activation_type: str = "swish",
+        use_cnn_module: bool = True,
+        cnn_module_kernel: int = 15,
+        causal: bool = False,
+        cnn_module_norm: str = "batch_norm",
+        key_bias: bool = True,
+        gradient_checkpointing: bool = False,
+    ):
+        """Construct ConformerEncoder
+
+        Args:
+            input_size to use_dynamic_chunk, see in BaseEncoder
+            positionwise_conv_kernel_size (int): Kernel size of positionwise
+                conv1d layer.
+            macaron_style (bool): Whether to use macaron style for
+                positionwise layer.
+            selfattention_layer_type (str): Encoder attention layer type,
+                the parameter has no effect now, it's just for configure
+                compatibility.
+            activation_type (str): Encoder activation function type.
+            use_cnn_module (bool): Whether to use convolution module.
+            cnn_module_kernel (int): Kernel size of convolution module.
+            causal (bool): whether to use causal convolution or not.
+            key_bias: whether use bias in attention.linear_k, False for whisper models.
+        """
+        super().__init__(input_size, output_size, attention_heads,
+                         linear_units, num_blocks, dropout_rate,
+                         positional_dropout_rate, attention_dropout_rate,
+                         input_layer, pos_enc_layer_type, normalize_before,
+                         static_chunk_size, use_dynamic_chunk, global_cmvn,
+                         use_dynamic_left_chunk, gradient_checkpointing)
+        activation = COSYVOICE_ACTIVATION_CLASSES[activation_type]()
+
+        # self-attention module definition
+        encoder_selfattn_layer_args = (
+            attention_heads,
+            output_size,
+            attention_dropout_rate,
+            key_bias,
+        )
+        # feed-forward module definition
+        positionwise_layer_args = (
+            output_size,
+            linear_units,
+            dropout_rate,
+            activation,
+        )
+        # convolution module definition
+        convolution_layer_args = (output_size, cnn_module_kernel, activation,
+                                  cnn_module_norm, causal)
+
+        self.encoders = torch.nn.ModuleList([
+            ConformerEncoderLayer_SpkAdapt(
+                output_size,
+                spk_emb_size,
+                COSYVOICE_ATTENTION_CLASSES[selfattention_layer_type](
+                    *encoder_selfattn_layer_args),
+                PositionwiseFeedForward(*positionwise_layer_args),
+                PositionwiseFeedForward(
+                    *positionwise_layer_args) if macaron_style else None,
+                ConvolutionModule(
+                    *convolution_layer_args) if use_cnn_module else None,
+                dropout_rate,
+                normalize_before,
+            ) for _ in range(num_blocks)
+        ])
+
+    def forward(
+        self,
+        xs: torch.Tensor,
+        xs_lens: torch.Tensor,
+        spk_emb: torch.Tensor,
+        decoding_chunk_size: int = 0,
+        num_decoding_left_chunks: int = -1,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Embed positions in tensor.
+
+        Args:
+            xs: padded input tensor (B, T, D)
+            xs_lens: input length (B)
+            decoding_chunk_size: decoding chunk size for dynamic chunk
+                0: default for training, use random dynamic chunk.
+                <0: for decoding, use full chunk.
+                >0: for decoding, use fixed chunk size as set.
+            num_decoding_left_chunks: number of left chunks, this is for decoding,
+            the chunk size is decoding_chunk_size.
+                >=0: use num_decoding_left_chunks
+                <0: use all left chunks
+        Returns:
+            encoder output tensor xs, and subsampled masks
+            xs: padded output tensor (B, T' ~= T/subsample_rate, D)
+            masks: torch.Tensor batch padding mask after subsample
+                (B, 1, T' ~= T/subsample_rate)
+        NOTE(xcsong):
+            We pass the `__call__` method of the modules instead of `forward` to the
+            checkpointing API because `__call__` attaches all the hooks of the module.
+            https://discuss.pytorch.org/t/any-different-between-model-input-and-model-forward-input/3690/2
+        """
+        T = xs.size(1)
+        masks = ~make_pad_mask(xs_lens, T).unsqueeze(1)  # (B, 1, T)
+        if self.global_cmvn is not None:
+            xs = self.global_cmvn(xs)
+        xs, pos_emb, masks = self.embed(xs, masks)
+        mask_pad = masks  # (B, 1, T/subsample_rate)
+        chunk_masks = add_optional_chunk_mask(xs, masks,
+                                              self.use_dynamic_chunk,
+                                              self.use_dynamic_left_chunk,
+                                              decoding_chunk_size,
+                                              self.static_chunk_size,
+                                              num_decoding_left_chunks)
+        if self.gradient_checkpointing and self.training:
+            xs = self.forward_layers_checkpointed(xs, chunk_masks, pos_emb,
+                                                  mask_pad)
+        else:
+            xs = self.forward_layers(xs, chunk_masks, pos_emb, spk_emb, mask_pad)
+        if self.normalize_before:
+            xs = self.after_norm(xs)
+        # Here we assume the mask is not changed in encoder layers, so just
+        # return the masks before encoder layers, and the masks will be used
+        # for cross attention with decoder later
+        return xs, masks
+
+    def forward_layers(self, xs: torch.Tensor, chunk_masks: torch.Tensor,
+                       pos_emb: torch.Tensor, spk_emb: torch.Tensor,
+                       mask_pad: torch.Tensor) -> torch.Tensor:
+        for layer in self.encoders:
+            xs, chunk_masks, _, _ = layer(
+                xs, chunk_masks, pos_emb, spk_emb, mask_pad)
+        return xs

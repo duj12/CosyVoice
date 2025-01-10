@@ -29,7 +29,7 @@ run_command() {
       cosyvoice/bin/train_phoneme_online_codec.py \
       --timeout  60    \
       --train_engine $train_engine \
-      --config conf/cosyvoice_pho_ft1.yaml \
+      --config conf/cosyvoice_pho_encaug_ft.yaml \
       --model llm \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
