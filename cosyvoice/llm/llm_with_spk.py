@@ -250,7 +250,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
         loss = self.criterion_ce(logits, lm_target)
 
         if self.speaker_embed.spec_aug_config is not None and self.training:
-            embedding_aug = self.encode_speaker(wave, wave_len)
+            with torch.no_grad():
+                embedding_aug = self.encode_speaker(wave, wave_len)
             vic_reg_loss = self.VICReg_loss(embedding_ori, embedding_aug)
             loss += vic_reg_loss
 
