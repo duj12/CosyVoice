@@ -104,6 +104,7 @@ def wrap_cuda_model(args, model):
         assert (torch.cuda.is_available())
         model.cuda()
         model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=False)
+        model._set_static_graph()
     else:
         if int(os.environ.get('RANK', 0)) == 0:
             logging.info("Estimating model states memory needs (zero2)...")

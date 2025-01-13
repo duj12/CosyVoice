@@ -21,6 +21,49 @@ from cosyvoice.utils.common import IGNORE_ID
 from cosyvoice.transformer.label_smoothing_loss import LabelSmoothingLoss
 from cosyvoice.utils.common import th_accuracy
 
+class VICReg(nn.Module):
+    """https://github.com/facebookresearch/vicreg/blob/main/main_vicreg.py"""
+    def __init__(self, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0):
+        super().__init__()
+        self.sim_coeff = sim_coeff
+        self.std_coeff = std_coeff
+        self.cov_coeff = cov_coeff
+
+    def forward(self, x, y):
+        """
+        :param x: size(B, D)
+        :param y: size(B, D)
+        :return:
+        """
+
+        batch_size, feat_dim = x.size()
+
+        def off_diagonal(x):
+            n, m = x.shape
+            assert n == m
+            return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+        repr_loss = F.mse_loss(x, y)
+
+        x = x - x.mean(dim=0)
+        y = y - y.mean(dim=0)
+        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+        std_loss = torch.mean(F.relu(1 - std_x)) / 2 +\
+                   torch.mean(F.relu(1 - std_y)) / 2
+
+        cov_x = (x.T @ x) / (batch_size - 1)
+        cov_y = (y.T @ y) / (batch_size - 1)
+        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(feat_dim
+        ) + off_diagonal(cov_y).pow_(2).sum().div(feat_dim)
+
+        loss = (
+            self.sim_coeff * repr_loss
+            + self.std_coeff * std_loss
+            + self.cov_coeff * cov_loss
+        )
+        return loss
+
 
 class TransformerLM_Phoneme(torch.nn.Module):
     """
@@ -66,6 +109,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
         ])
 
         self.speaker_embed = speaker_encoder
+        if self.speaker_embed.spec_aug_config is not None and self.training:
+            self.VICReg_loss = VICReg()
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(
@@ -182,9 +227,9 @@ class TransformerLM_Phoneme(torch.nn.Module):
         text_token, text_token_len = self.encode(text_token, text_token_len)
 
         # 2. embedding projection
-        embedding = self.encode_speaker(wave, wave_len)
-        batch['embedding'] = embedding
-        embedding = F.normalize(embedding, dim=1)
+        embedding_ori = self.encode_speaker(wave, wave_len)
+        batch['embedding'] = embedding_ori
+        embedding = F.normalize(embedding_ori, dim=1)
         embedding = self.spk_embed_affine_layer(embedding)
         embedding = embedding.unsqueeze(1)
 
@@ -203,6 +248,12 @@ class TransformerLM_Phoneme(torch.nn.Module):
         lm_output, lm_output_mask = self.llm(lm_input, lm_input_len.to(device))
         logits = self.llm_decoder(lm_output)
         loss = self.criterion_ce(logits, lm_target)
+
+        if self.speaker_embed.spec_aug_config is not None and self.training:
+            embedding_aug = self.encode_speaker(wave, wave_len)
+            vic_reg_loss = self.VICReg_loss(embedding_ori, embedding_aug)
+            loss += vic_reg_loss
+
         acc = th_accuracy(logits.view(-1, self.speech_token_size + 1), lm_target, ignore_label=IGNORE_ID)
         return {'loss': loss, 'acc': acc}
 

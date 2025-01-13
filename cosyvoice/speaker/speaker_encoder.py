@@ -17,6 +17,7 @@ import torch
 import logging
 import os
 from torch import nn
+import torchaudio.functional as AF
 from cosyvoice.speaker.CAMPPlus import CAMPPlus, FBank
 from cosyvoice.speaker.mel_processing import spectrogram_torch
 from cosyvoice.speaker.posterior_encoder import PosteriorEncoder
@@ -33,14 +34,97 @@ def freeze_BN_layer(m):
     if "BatchNorm" in cls:
         m.eval()
 
+class SpecAugment(torch.nn.Module):
+    r"""Apply time and frequency masking to a spectrogram. From torchaudio
+    Args:
+        n_time_masks (int): Number of time masks. If its value is zero, no time masking will be applied.
+        time_mask_ratio (float): Maximum possible ratio of the time mask in time dimension.
+        n_freq_masks (int): Number of frequency masks. If its value is zero, no frequency masking will be applied.
+        freq_mask_ratio (float): Maximum possible ratio of the frequency mask in frequency dimension.
+        iid_masks (bool, optional): Applies iid masks to each of the examples in the batch dimension.
+            This option is applicable only when the input tensor is 3D or more. (Default: ``True``)
+        p (float, optional): maximum proportion of time steps that can be masked.
+            Must be within range [0.0, 1.0]. (Default: 1.0)
+        zero_masking (bool, optional): If ``True``, use 0 as the mask value,
+            else use mean of the input tensor. (Default: ``False``)
+    """
+    __constants__ = [
+        "n_time_masks",
+        "time_mask_ratio",
+        "n_freq_masks",
+        "freq_mask_ratio",
+        "iid_masks",
+        "p",
+        "zero_masking",
+    ]
+
+    def __init__(
+        self,
+        n_time_masks: int,
+        time_mask_ratio: float,
+        n_freq_masks: int,
+        freq_mask_ratio: float,
+        iid_masks: bool = True,
+        p: float = 1.0,
+        zero_masking: bool = False,
+    ) -> None:
+        super(SpecAugment, self).__init__()
+        self.n_time_masks = n_time_masks
+        self.time_mask_ratio = time_mask_ratio
+        self.n_freq_masks = n_freq_masks
+        self.freq_mask_ratio = freq_mask_ratio
+        self.iid_masks = iid_masks
+        self.p = p
+        self.zero_masking = zero_masking
+
+    def forward(self, specgram: torch.Tensor) -> torch.Tensor:
+        r"""
+        Args:
+            specgram (Tensor): Tensor of shape `(..., freq, time)`.
+        Returns:
+            Tensor: Masked spectrogram of shape `(..., freq, time)`.
+        """
+        if self.zero_masking:
+            mask_value = 0.0
+        else:
+            mask_value = specgram.mean()
+
+        if specgram.dim() == 3:
+            specgram = specgram.unsqueeze(1)  # add 1 dim, to (B, C, D, T)
+
+        time_dim = specgram.dim() - 1
+        freq_dim = time_dim - 1
+        time_size = specgram.size(time_dim)
+        freq_size = specgram.size(freq_dim)
+        time_mask_param = int(time_size * self.time_mask_ratio)
+        freq_mask_param = int(freq_size * self.freq_mask_ratio)
+
+        if specgram.dim() > 2 and self.iid_masks is True:
+            for _ in range(self.n_time_masks):
+                specgram = AF.mask_along_axis_iid(specgram, time_mask_param, mask_value, time_dim, p=self.p)
+            for _ in range(self.n_freq_masks):
+                specgram = AF.mask_along_axis_iid(specgram, freq_mask_param, mask_value, freq_dim, p=self.p)
+        else:
+            for _ in range(self.n_time_masks):
+                specgram = AF.mask_along_axis(specgram, self.time_mask_param, mask_value, time_dim, p=self.p)
+            for _ in range(self.n_freq_masks):
+                specgram = AF.mask_along_axis(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.p)
+
+        if specgram.dim() == 4:
+            specgram = specgram.squeeze(1)  # back to (B, D, T)
+
+        return specgram
+
+
 class SpeakerEmbedding(nn.Module):
     def __init__(
             self, spec_channels=513, inter_channels=512, hidden_channels=512,
             speaker_emb_dim=512, ckpt_path=None, mode='inference',
             freeze_post_enc=True, freeze_timbre_enc=True, freeze_style_enc=True,
             spk_audio_crop=10,  # 提取向量是音频裁剪最短长度，低于此时长音频会被拼接
+            spec_aug_config=None,   # 计算对比损失时进行SpecAug {mask_ratio=0.1, iid_mask=True}
             spk_mix=False,      # 一个batch内音频进行拼接增强
-            noise_aug_config={'noise_list': None, 'db_range': [0, 20]},  # 参考音频加噪增强
+            noise_aug_config=None,  # 参考音频加噪增强{'noise_list': None, 'db_range': [0, 20]}
     ):
         super().__init__()
 
@@ -50,8 +134,16 @@ class SpeakerEmbedding(nn.Module):
         self.filter_length = 1024
         self.sampling_rate = 24000
         self.spk_audio_crop = spk_audio_crop
+        self.spec_aug_config = spec_aug_config
         self.spk_mix = spk_mix
         self.noise_aug_config = noise_aug_config
+
+        if self.spec_aug_config is not None and self.training:
+            self.spec_aug = SpecAugment(
+                n_time_masks=1, time_mask_ratio=spec_aug_config['mask_ratio'],
+                n_freq_masks=1, freq_mask_ratio=spec_aug_config['mask_ratio'],
+                iid_masks=spec_aug_config['iid_mask'],
+            )
 
         self.enc_q = PosteriorEncoder(spec_channels, inter_channels,
                                       hidden_channels, 5, 1, 16,
@@ -137,6 +229,10 @@ class SpeakerEmbedding(nn.Module):
                 wave[i], sr=self.sampling_rate).transpose(0, 1)  # D T
             fbanks.append(fbank)
         fbank = torch.stack(fbanks)  # B D T
+        if self.spec_aug_config is not None and self.training:
+            fbank = fbank.unsqueeze(1)  # to (BCDT)
+            fbank = self.spec_aug(fbank).squeeze(1)  # to BDT
+
         # 音色编码由fbank得到
         timbre_vec = self.speaker_encoder(fbank).unsqueeze(-1)  # B D 1
 
@@ -145,6 +241,9 @@ class SpeakerEmbedding(nn.Module):
                                     self.sampling_rate,
                                     self.hop_length,
                                     self.win_length)  # B D T
+        if self.spec_aug_config is not None and self.training:
+            melspec = melspec.unsqueeze(1)   # to BCDT
+            melspec = self.spec_aug(melspec).squeeze(1)  # back to BDT
 
         total_length = melspec.size(-1)
         spec_lengths = wave_lengths // self.hop_length
