@@ -103,7 +103,7 @@ def wrap_cuda_model(args, model):
     if args.train_engine == "torch_ddp":  # native pytorch ddp
         assert (torch.cuda.is_available())
         model.cuda()
-        model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=False)
     else:
         if int(os.environ.get('RANK', 0)) == 0:
             logging.info("Estimating model states memory needs (zero2)...")
@@ -430,12 +430,16 @@ def init_codec_and_embed_model(configs, rank=0):
         codec_model = s3tokenizer.load_model(
             'speech_tokenizer_v2_25hz', configs['s3tokenizer_ckpt'])
     codec_model = codec_model.cuda(rank)
-
-    spkemb_model = SpeakerEmbedding(
-        ckpt_path=configs['speaker_encoder_ckpt']).cuda(rank)
-
     codec_model = freeze(codec_model)
-    spkemb_model = freeze(spkemb_model)
+
+    use_freeze_spkemb = configs.get('use_freeze_spkemb', True)
+    if use_freeze_spkemb:  # 使用离线的说话人向量提取模型，不和主干网络一起训练
+        spkemb_model = SpeakerEmbedding(
+            ckpt_path=configs['speaker_encoder_ckpt']).cuda(rank)
+        spkemb_model = freeze(spkemb_model)
+    else:
+        spkemb_model = None
+
     return codec_model, spkemb_model
 
 def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
@@ -469,7 +473,10 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
 
         speech_code = speech_code.clone()
         speech_code_len = speech_code_len.clone()
+    batch_dict['speech_token'] = speech_code
+    batch_dict['speech_token_len'] = speech_code_len
 
+    if spkemb_model is not None:
         spk_audio_crop = configs.get('spk_audio_crop', 0)
         if spk_audio_crop:
             wave_len = wave_len.to('cpu')
@@ -498,11 +505,9 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
             spk_wave = wave
             spk_wave_len = wave_len
 
-        # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
-        speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
-
-    batch_dict['speech_token'] = speech_code
-    batch_dict['speech_token_len'] = speech_code_len
-    batch_dict['embedding'] = speaker_embs
+        with torch.no_grad():
+            # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
+            speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
+        batch_dict['embedding'] = speaker_embs
 
     return batch_dict

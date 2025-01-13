@@ -34,20 +34,24 @@ def freeze_BN_layer(m):
         m.eval()
 
 class SpeakerEmbedding(nn.Module):
-    def __init__(self,
-                 spec_channels=513,
-                 inter_channels=512,
-                 hidden_channels=512,
-                 speaker_emb_dim=512,
-                 ckpt_path=None,
-                 mode='inference'):
+    def __init__(
+            self, spec_channels=513, inter_channels=512, hidden_channels=512,
+            speaker_emb_dim=512, ckpt_path=None, mode='inference',
+            freeze_post_enc=True, freeze_timbre_enc=True, freeze_style_enc=True,
+            spk_audio_crop=10,  # 提取向量是音频裁剪最短长度，低于此时长音频会被拼接
+            spk_mix=False,      # 一个batch内音频进行拼接增强
+            noise_aug_config={'noise_list': None, 'db_range': [0, 20]},  # 参考音频加噪增强
+    ):
         super().__init__()
 
-        # 线性谱
+        # linear spectrum, fixed configuration
         self.hop_length = 300
         self.win_length = 1024
         self.filter_length = 1024
         self.sampling_rate = 24000
+        self.spk_audio_crop = spk_audio_crop
+        self.spk_mix = spk_mix
+        self.noise_aug_config = noise_aug_config
 
         self.enc_q = PosteriorEncoder(spec_channels, inter_channels,
                                       hidden_channels, 5, 1, 16,
@@ -70,7 +74,7 @@ class SpeakerEmbedding(nn.Module):
         style_head = 4
         style_kernel_size = 5
         style_layers = 6
-        # use mel feature to extract initial style embedding.
+        # use post encoder feature to extract initial style embedding.
         self.style_encoder = StyleEncoder_v2(
             hidden_channels, style_hidden, style_dim,
             style_kernel_size, style_head, num_layers=style_layers)
@@ -90,6 +94,26 @@ class SpeakerEmbedding(nn.Module):
 
         if mode == 'train':
             self.freeze_BN = False
+            if freeze_post_enc:
+                for param in self.enc_q.parameters():
+                    param.requires_grad = False
+                logger.info(f"Posterior Encoder do not execute back propagation.")
+
+            if freeze_timbre_enc:
+                for param in self.speaker_encoder.parameters():
+                    param.requires_grad = False
+                logger.info(f"Timbre Encoder do not execute back propagation.")
+
+            if freeze_style_enc:
+                for param in self.style_encoder.parameters():
+                    param.requires_grad = False
+                for param in self.gst.parameters():
+                    param.requires_grad = False
+                if self.speaker_adapter is not None:
+                    for param in self.speaker_adapter.parameters():
+                        param.requires_grad = False
+                logger.info(f"Style Encoder do not execute back propagation.")
+
         else:
             self.freeze_BN = True   # BatchNorm 在使用的时候一定要注意设成eval模式
         if self.freeze_BN:

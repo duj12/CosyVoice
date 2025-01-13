@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+logger = logging.getLogger(__name__)
 import random
 from typing import Dict, Optional
 import torch
@@ -48,7 +49,7 @@ class MaskedDiffWithXvec(torch.nn.Module):
         self.vocab_size = vocab_size
         self.output_type = output_type
         self.input_frame_rate = input_frame_rate
-        logging.info(f"input frame rate={self.input_frame_rate}")
+        logger.info(f"input frame rate={self.input_frame_rate}")
         self.input_embedding = nn.Embedding(vocab_size, input_size)
         self.spk_embed_affine_layer = torch.nn.Linear(spk_embed_dim, output_size)
         self.encoder = encoder
