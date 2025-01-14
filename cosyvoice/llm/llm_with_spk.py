@@ -23,7 +23,7 @@ from cosyvoice.utils.common import th_accuracy
 
 class VICReg(nn.Module):
     """https://github.com/facebookresearch/vicreg/blob/main/main_vicreg.py"""
-    def __init__(self, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0):
+    def __init__(self, sim_coeff=0.5, std_coeff=0.4, cov_coeff=0.1):
         super().__init__()
         self.sim_coeff = sim_coeff
         self.std_coeff = std_coeff
