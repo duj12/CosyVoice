@@ -16,12 +16,11 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 # second of min length, if the duration of a audio is less than this, it will be duplicated.
 spk_audio_crop: 10  # for speaker audio crop, 0 means do not crop。
-use_freeze_spkemb: False
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm_with_spk.TransformerLM_Phoneme
+llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -39,15 +38,7 @@ llm: !new:cosyvoice.llm.llm_with_spk.TransformerLM_Phoneme
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    speaker_encoder: !new:cosyvoice.speaker.speaker_encoder.SpeakerEmbedding
-        ckpt_path: !ref <speaker_encoder_ckpt>
-        mode: 'train'
-        freeze_post_enc: True
-        freeze_timbre_enc: False
-        freeze_style_enc: True
-        spk_audio_crop: !ref <spk_audio_crop>
-        spk_mix: False
-        noise_aug_config: {}
+    use_frontend_prsd: False
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
         output_size: 1024

@@ -165,7 +165,9 @@ def Dataset(json_file,
             shuffle=True,
             partition=True,
             tts_file=None,
-            eval=False):
+            eval=False,
+            rich_sample_short_utt=0
+    ):
     """ Construct dataset from arguments
 
         json_file is like :
@@ -216,7 +218,7 @@ def Dataset(json_file,
     utt2spk = {}
     valid_utt_list = []
     def add_one_data(json_file):
-        logging.info(f"Loading data: {json_file}")
+        logging.info(f"Loading data: {json_file}, short data sample times {rich_sample_short_utt}")
         if isinstance(json_file, list):
             json_file, language, repeat_time = json_file
         with open(json_file, 'r', encoding='utf8') as fin:
@@ -237,8 +239,8 @@ def Dataset(json_file,
                 utt2text[utt] = text
                 utt2spk[utt] = sid
                 valid_utt_list.append(utt)
-                # if len(text) < 10:  # 对音素序列长度低于10的音频富采样
-                #     valid_utt_list.extend([utt]*10)
+                if rich_sample_short_utt>0 and len(text) < 10:  # 对音素序列长度低于10的音频富采样
+                    valid_utt_list.extend([utt]*rich_sample_short_utt)
 
         del dataset_info
         logging.info(f"Current utts: {len(utt2wav.keys())}. Actual samples {len(valid_utt_list)}")

@@ -20,6 +20,9 @@ from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from cosyvoice.utils.common import IGNORE_ID
 from cosyvoice.transformer.label_smoothing_loss import LabelSmoothingLoss
 from cosyvoice.utils.common import th_accuracy
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TransformerLM(torch.nn.Module):
@@ -439,6 +442,7 @@ class TransformerLM_Phoneme(torch.nn.Module):
             length_normalized_loss: bool = True,
             lsm_weight: float = 0.0,
             spk_embed_dim: int = 192,
+            use_frontend_prsd: bool = True,
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -455,6 +459,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
             torch.nn.Embedding(text_lang_size, text_lang_dim),
             torch.nn.Embedding(text_prsd_size, text_prsd_dim)
         ])
+        self.use_frontend_prsd = use_frontend_prsd
+        logger.info(f"llm use frontend prosody: {use_frontend_prsd}")
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(
@@ -537,6 +543,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
         text_embed_list = []
         for i in range(len(self.text_embedding)):
             embed = self.text_embedding[i](text_token[:, :, i])
+            if not self.use_frontend_prsd and i==3:
+                embed *= 0.0
             text_embed_list.append(embed)
         text_token = torch.cat(text_embed_list, dim=-1)
 
@@ -601,6 +609,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
         text_embed_list = []
         for i in range(len(self.text_embedding)):
             embed = self.text_embedding[i](text[:, :, i])
+            if not self.use_frontend_prsd and i==3:
+                embed *= 0.0
             text_embed_list.append(embed)
         text = torch.cat(text_embed_list, dim=-1)
 
@@ -863,7 +873,7 @@ class TransformerLM_Phoneme_SpkAdapt(torch.nn.Module):
         text = torch.cat(text_embed_list, dim=-1)
 
         # 1. encode text
-        text, text_len = self.encode(text, text_len)
+        text, text_len = self.encode(text, text_len, embedding)
 
         # 2. encode embedding
         if embedding.shape[0] != 0:

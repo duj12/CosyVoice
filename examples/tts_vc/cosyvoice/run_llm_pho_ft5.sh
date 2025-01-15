@@ -6,30 +6,31 @@ stage=0
 stop_stage=0
 
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
-pretrained_model_dir=exp/cosyvoice/flow_15w_tts/torch_ddp
-# train flow
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
+pretrained_model_dir=exp/cosyvoice/llm_pho_31w_tts_5/torch_ddp
+# train llm_pho
+export CUDA_VISIBLE_DEVICES="4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
-num_workers=4
+num_workers=8
 prefetch=100
 train_engine=torch_ddp
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
   if [ $train_engine == 'deepspeed' ]; then
     echo "Notice deepspeed has its own optimizer config. Modify conf/ds_stage2.json if necessary"
   fi
-portnum=3000
+portnum=2100
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
-  for model in flow_15w_tts; do
-    OMP_NUM_THREADS=4  \
+  for model in llm_pho_31w_tts_5; do
+    OMP_NUM_THREADS=4 \
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
-      --master_port $portnum  \
+      --master_port $portnum   \
       cosyvoice/bin/train_phoneme_online_codec.py \
+      --timeout  60    \
       --train_engine $train_engine \
-      --config conf/cosyvoice_flow_ft.yaml \
-      --model flow \
+      --config conf/cosyvoice_pho_ft4.yaml \
+      --model llm \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
       --tensorboard_dir `pwd`/tensorboard/cosyvoice/$model/$train_engine \

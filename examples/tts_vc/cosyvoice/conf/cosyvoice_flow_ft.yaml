@@ -14,6 +14,7 @@ spk_embed_dim: 512
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
+rich_sample_short_utt: 100   # 对短音频进行富采样的倍数
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.

@@ -70,11 +70,12 @@ llm: !new:cosyvoice.llm.llm.TransformerLM_Phoneme_SpkAdapt
         pos_enc_layer_type: 'rel_pos_espnet'
         selfattention_layer_type: 'rel_selfattn'
         static_chunk_size: 1
-    sampling: !name:cosyvoice.utils.common.ras_sampling
+    sampling: !name:cosyvoice.utils.common.non_random_ras_sampling
         top_p: 0.8
-        top_k: 25
-        win_size: 10
+        top_k: 10
+        win_size: 50
         tau_r: 0.1
+        expand_scale: 2
 
 flow: !new:cosyvoice.flow.flow.MaskedDiffWithXvec
     input_size: 512

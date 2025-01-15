@@ -179,9 +179,9 @@ def main():
         executor.step = resume_info["step"]
         start_epoch = resume_info['epoch']
         optimizer.param_groups[0]['lr'] = resume_info["lr"]
-        scheduler.set_step(resume_info["step"])
-        if scheduler_d is not None:
-            scheduler_d.set_step(resume_info["step"])
+        # scheduler.set_step(resume_info["step"])
+        # if scheduler_d is not None:
+        #     scheduler_d.set_step(resume_info["step"])
         if 'data_idx' in resume_info:
             executor.data_idx = resume_info['data_idx']
 
