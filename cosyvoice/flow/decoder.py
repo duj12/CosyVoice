@@ -1,4 +1,5 @@
 # Copyright (c) 2024 Alibaba Inc (authors: Xiang Lyu, Zhihao Du)
+#               2025 Jing Du
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +17,7 @@ import torch.nn as nn
 from einops import pack, rearrange, repeat
 from cosyvoice.flow.components.decoder import SinusoidalPosEmb, Block1D, ResnetBlock1D, Downsample1D, TimestepEmbedding, Upsample1D
 from cosyvoice.flow.components.transformer import BasicTransformerBlock
+from cosyvoice.utils.mask import add_optional_chunk_mask
 
 
 class ConditionalDecoder(nn.Module):
@@ -30,12 +32,14 @@ class ConditionalDecoder(nn.Module):
         num_mid_blocks=2,
         num_heads=4,
         act_fn="snake",
+        use_dynamic_chunk=False,
     ):
         """
         This decoder requires an input with the same shape of the target. So, if your text content
         is shorter or longer than the outputs, please re-sampling it before feeding to the decoder.
         """
         super().__init__()
+        self.use_dynamic_chunk = use_dynamic_chunk
         channels = tuple(channels)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -171,11 +175,20 @@ class ConditionalDecoder(nn.Module):
 
         hiddens = []
         masks = [mask]
+
         for resnet, transformer_blocks, downsample in self.down_blocks:
             mask_down = masks[-1]
             x = resnet(x, mask_down, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
             attn_mask = torch.matmul(mask_down.transpose(1, 2).contiguous(), mask_down)
+            if self.use_dynamic_chunk and self.training:
+                attn_mask = add_optional_chunk_mask(
+                    x, mask_down.bool(), self.use_dynamic_chunk,
+                    use_dynamic_left_chunk=False, decoding_chunk_size=0,
+                    static_chunk_size=0, num_decoding_left_chunks=-1,
+                    max_dynamic_chunk_size=96,
+                )
+
             for transformer_block in transformer_blocks:
                 x = transformer_block(
                     hidden_states=x,
@@ -193,6 +206,14 @@ class ConditionalDecoder(nn.Module):
             x = resnet(x, mask_mid, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
             attn_mask = torch.matmul(mask_mid.transpose(1, 2).contiguous(), mask_mid)
+            if self.use_dynamic_chunk and self.training:
+                attn_mask = add_optional_chunk_mask(
+                    x, mask_mid.bool(), self.use_dynamic_chunk,
+                    use_dynamic_left_chunk=False, decoding_chunk_size=0,
+                    static_chunk_size=0, num_decoding_left_chunks=-1,
+                    max_dynamic_chunk_size=48,
+                )
+
             for transformer_block in transformer_blocks:
                 x = transformer_block(
                     hidden_states=x,
@@ -208,6 +229,14 @@ class ConditionalDecoder(nn.Module):
             x = resnet(x, mask_up, t)
             x = rearrange(x, "b c t -> b t c").contiguous()
             attn_mask = torch.matmul(mask_up.transpose(1, 2).contiguous(), mask_up)
+            if self.use_dynamic_chunk and self.training:
+                attn_mask = add_optional_chunk_mask(
+                    x, mask_up.bool(), self.use_dynamic_chunk,
+                    use_dynamic_left_chunk=False, decoding_chunk_size=0,
+                    static_chunk_size=0, num_decoding_left_chunks=-1,
+                    max_dynamic_chunk_size=96,
+                )
+
             for transformer_block in transformer_blocks:
                 x = transformer_block(
                     hidden_states=x,

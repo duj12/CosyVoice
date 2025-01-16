@@ -131,7 +131,9 @@ def add_optional_chunk_mask(xs: torch.Tensor,
                             decoding_chunk_size: int,
                             static_chunk_size: int,
                             num_decoding_left_chunks: int,
-                            enable_full_context: bool = True):
+                            enable_full_context: bool = True,
+                            max_dynamic_chunk_size=25,
+    ):
     """ Apply optional mask for encoder.
 
     Args:
@@ -176,7 +178,7 @@ def add_optional_chunk_mask(xs: torch.Tensor,
             if chunk_size > max_len // 2 and enable_full_context:
                 chunk_size = max_len
             else:
-                chunk_size = chunk_size % 25 + 1
+                chunk_size = chunk_size % max_dynamic_chunk_size + 1
                 if use_dynamic_left_chunk:
                     max_left_chunks = (max_len - 1) // chunk_size
                     num_left_chunks = torch.randint(0, max_left_chunks,
