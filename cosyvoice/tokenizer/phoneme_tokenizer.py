@@ -20,12 +20,14 @@ from cosyvoice.tokenizer.phoneme_frontend import get_frontend_result
 class PhonemeTokenizer:
     def __init__(self,
                  phoneme_dict="cosyvoice/tokenizer/assets/hnttsa_phoneme2id.json",
-                 mode='train'):
+                 mode='train', use_pause_label=True
+    ):
         with open(phoneme_dict, 'r', encoding='utf-8') as fin:
             self.phoneme2id = json.load(fin)
         self.mode = mode
         self.cn_frontend_model = None
         self.en_frontend_model = None
+        self.use_pause_label = use_pause_label
         if mode == 'inference':  # hard code frontend model, import from local path
             TTS_root = "/data/megastore/Projects/DuJing/code/TTS"
             sys.path.append(TTS_root)
@@ -75,6 +77,9 @@ class PhonemeTokenizer:
                     prsd_ids[-1] = prsd_id
 
                 # the prosody is not add into the sequence
+                continue
+
+            if not self.use_pause_label and self._islabel_mark(phoneme):
                 continue
 
             # normal phoneme, and punctuation or human labeled pause in audio
@@ -128,6 +133,9 @@ class PhonemeTokenizer:
                 # the prosody is not add into the sequence
                 continue
 
+            if not self.use_pause_label and self._islabel_mark(pho):
+                continue
+
             # normal phoneme, and punctuation or human labeled pause in audio
             else:
                 pho_id = self.phoneme2id[pho]
@@ -139,5 +147,5 @@ class PhonemeTokenizer:
         return pho_ids, tone_ids, lang_ids, prsd_ids
 
 def get_tokenizer(phoneme_dict="cosyvoice/tokenizer/assets/hnttsa_phoneme2id.json",
-                  mode='train'):
-    return PhonemeTokenizer(phoneme_dict, mode=mode)
+                  mode='train', use_pause_label=True):
+    return PhonemeTokenizer(phoneme_dict, mode=mode, use_pause_label=use_pause_label)

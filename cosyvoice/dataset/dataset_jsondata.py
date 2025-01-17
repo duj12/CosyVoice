@@ -234,7 +234,7 @@ def Dataset(json_file,
             for fname, dur, sequence in file_list:
                 text = sequence['text']
                 wav_path = os.path.join(wave_dir, speaker_folder, '{}.wav'.format(fname))
-                utt = fname
+                utt = f"{sid}-{fname}"
                 utt2wav[utt] = wav_path
                 utt2text[utt] = text
                 utt2spk[utt] = sid

@@ -443,6 +443,7 @@ class TransformerLM_Phoneme(torch.nn.Module):
             lsm_weight: float = 0.0,
             spk_embed_dim: int = 192,
             use_frontend_prsd: bool = True,
+            use_pause_label: bool=True,
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -460,7 +461,8 @@ class TransformerLM_Phoneme(torch.nn.Module):
             torch.nn.Embedding(text_prsd_size, text_prsd_dim)
         ])
         self.use_frontend_prsd = use_frontend_prsd
-        logger.info(f"llm use frontend prosody: {use_frontend_prsd}")
+        self.use_pause_label = use_pause_label
+        logger.info(f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}")
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(

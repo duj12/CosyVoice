@@ -6,7 +6,7 @@ stage=0
 stop_stage=0
 
 pretrained_model_dir=../../../pretrained_models/CosyVoice-300M-25Hz
-pretrained_model_dir=exp/cosyvoice/llm_pho_31w_tts/torch_ddp
+pretrained_model_dir=exp/cosyvoice/llm_pho_31w_tts_6/torch_ddp
 # train llm_pho
 export CUDA_VISIBLE_DEVICES="0,1,2,3"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
@@ -19,17 +19,17 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
   if [ $train_engine == 'deepspeed' ]; then
     echo "Notice deepspeed has its own optimizer config. Modify conf/ds_stage2.json if necessary"
   fi
-portnum=2100
+portnum=2101
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
-  for model in llm_pho_31w_tts; do
+  for model in llm_pho_31w_tts_6; do
     OMP_NUM_THREADS=4 \
     torchrun --nnodes=1 --nproc_per_node=$num_gpus \
       --master_port $portnum   \
       cosyvoice/bin/train_phoneme_online_codec.py \
       --timeout  60    \
       --train_engine $train_engine \
-      --config conf/cosyvoice_pho_ft.yaml \
+      --config conf/cosyvoice_pho_ft5.yaml \
       --model llm \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/cosyvoice/$model/$train_engine \
