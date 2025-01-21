@@ -52,11 +52,11 @@ class ConditionalCFM(BASECFM):
         """
 
         z = torch.randn_like(mu) * temperature
-        cache_size = flow_cache.shape[2]
+        cache_size = min(flow_cache.shape[2], mu.size(2))
         # fix prompt and overlap part mu and z
         if cache_size != 0:
-            z[:, :, :cache_size] = flow_cache[:, :, :, 0]
-            mu[:, :, :cache_size] = flow_cache[:, :, :, 1]
+            z[:, :, :cache_size] = flow_cache[:, :, :cache_size, 0]
+            mu[:, :, :cache_size] = flow_cache[:, :, :cache_size, 1]
         z_cache = torch.concat([z[:, :, :prompt_len], z[:, :, -34:]], dim=2)
         mu_cache = torch.concat([mu[:, :, :prompt_len], mu[:, :, -34:]], dim=2)
         flow_cache = torch.stack([z_cache, mu_cache], dim=-1)

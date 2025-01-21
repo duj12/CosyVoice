@@ -11,7 +11,6 @@ import struct
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 import torchaudio.compliance.kaldi as Kaldi
-import webrtcvad
 from scipy.ndimage.morphology import binary_dilation
 import numpy as np
 
@@ -274,6 +273,7 @@ def trim_long_silences(wav, sampling_rate=16000, vad_window_length=30,
 
     # Perform voice activation detection
     voice_flags = []
+    import webrtcvad
     vad = webrtcvad.Vad(mode=3)
     for window_start in range(0, len(wav), samples_per_window):
         window_end = window_start + samples_per_window
