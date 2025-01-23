@@ -429,7 +429,7 @@ def init_codec_and_embed_model(configs, rank=0):
         codec_model = s3tokenizer.load_model(
             'speech_tokenizer_v1_25hz', configs['s3tokenizer_ckpt'])
         logging.info(f"loaded codec model ckpt {configs['s3tokenizer_ckpt']}")
-    elif configs['codec_type'] == 's3tokenizer-v2':
+    elif configs['codec_type'] == 's3tokenizer_v2':
         codec_model = s3tokenizer.load_model(
             'speech_tokenizer_v2_25hz', configs['s3tokenizer_ckpt'])
     codec_model = codec_model.cuda(rank)

@@ -109,11 +109,12 @@ class DistributedSampler:
 
 class DataList(IterableDataset):
 
-    def __init__(self, lists, utt2wav, utt2text, utt2spk, shuffle=True,
-                 partition=True, tts_text=None, eval=False):
+    def __init__(self, lists, utt2wav, utt2text, utt2pho, utt2spk,
+                 shuffle=True, partition=True, tts_text=None, eval=False):
         self.lists = lists
         self.utt2wav = utt2wav
         self.utt2text = utt2text
+        self.utt2pho = utt2pho
         self.utt2spk = utt2spk
         self.tts_text = tts_text  # a list, each prompt will generate all texts in the list
         if not eval:
@@ -141,7 +142,11 @@ class DataList(IterableDataset):
             if utt not in self.utt2text:
                 logging.warning(f'key {utt} not in self.utt2text. jumped.')
                 continue
+            if utt not in self.utt2pho:
+                logging.warning(f'key {utt} not in self.utt2pho. jumped.')
+                continue
             sample['text'] = self.utt2text[utt]
+            sample['pho'] = self.utt2pho[utt]
             if utt in self.utt2spk:
                 sample['spk'] = self.utt2spk[utt]
             else:
@@ -214,8 +219,9 @@ def Dataset(json_file,
     assert mode in ['train', 'inference']
 
     utt2wav = {}
-    utt2text = {}
+    utt2pho = {}
     utt2spk = {}
+    utt2text = {}
     valid_utt_list = []
     def add_one_data(json_file):
         logging.info(f"Loading data: {json_file}, short data sample times {rich_sample_short_utt}")
@@ -226,21 +232,37 @@ def Dataset(json_file,
         data_dir = os.path.dirname(json_file)
         data_name = os.path.basename(data_dir)
         wave_dir = os.path.join(data_dir, "Formatted")
+        kaldi_data_dir = os.path.join(data_dir, data_name)
 
         for speaker, info in dataset_info.items():
             speaker_folder = speaker.split('|')[0]
             sid = speaker.split('|')[1]
             total_dur, file_list = info
             for fname, dur, sequence in file_list:
-                text = sequence['text']
+                pho = sequence['text']
                 wav_path = os.path.join(wave_dir, speaker_folder, '{}.wav'.format(fname))
-                utt = f"{sid}-{fname}"
+                utt = f"{fname}"
                 utt2wav[utt] = wav_path
-                utt2text[utt] = text
+                utt2pho[utt] = pho
                 utt2spk[utt] = sid
                 valid_utt_list.append(utt)
-                if rich_sample_short_utt>0 and len(text) < 10:  # 对音素序列长度低于10的音频富采样
+                if rich_sample_short_utt>0 and len(pho) < 10:  # 对音素序列长度低于10的音频富采样
                     valid_utt_list.extend([utt]*rich_sample_short_utt)
+
+        text_path = os.path.join(kaldi_data_dir, "text_punc")
+        if not os.path.exists(text_path):
+            text_path = os.path.join(kaldi_data_dir, 'text')
+            assert(os.path.exists(text_path)), f"text path of {data_name} not exist! you shou check it."
+
+        with open(text_path, 'r', encoding='utf-8') as ftext:
+            for line in ftext:
+                line = line.strip().split(maxsplit=1)
+                if len(line)!=2:
+                    continue
+                utt, text = line[0], line[1]
+                if utt not in utt2pho:
+                    continue
+                utt2text[utt] = text
 
         del dataset_info
         logging.info(f"Current utts: {len(utt2wav.keys())}. Actual samples {len(valid_utt_list)}")
@@ -262,7 +284,7 @@ def Dataset(json_file,
                 tts_text.append(line)
             logging.info(f"read {len(tts_text)} lines from {tts_file}")
 
-    dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2spk,
+    dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2pho, utt2spk,
                        shuffle=shuffle, partition=partition,
                        tts_text=tts_text, eval=eval)
 

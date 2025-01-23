@@ -252,7 +252,8 @@ class QwenTokenizer():
                 '[quick_breath]',
                 "<laughter>", "</laughter>",
                 "[hissing]", "[sigh]", "[vocalized-noise]",
-                "[lipsmack]", "[mn]"
+                "[lipsmack]", "[mn]",
+                "<k>", "<p>", "<t>", "<s>", "<g>"
             ]
         }
         self.special_tokens = special_tokens

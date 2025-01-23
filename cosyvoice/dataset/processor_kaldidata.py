@@ -301,10 +301,10 @@ def tokenize_phoneme(data, get_tokenizer, mode='train'):
 
     for sample in data:
         if mode == 'train':
-            assert 'text' in sample
-        if 'text' in sample:
+            assert 'pho' in sample
+        if 'pho' in sample:
             try:
-                pho_ids, tone_ids, lang_ids, prsd_ids = tokenizer.encode(sample['text'])
+                pho_ids, tone_ids, lang_ids, prsd_ids = tokenizer.encode(sample['pho'])
             except Exception as e:
                 logging.error(e)
                 continue
@@ -313,14 +313,14 @@ def tokenize_phoneme(data, get_tokenizer, mode='train'):
                 logging.warning(f"{sample['utt']}, {sample['wav']} phoneme error.")
                 continue
 
-            sample['text_token'] = pho_ids
+            sample['pho_token'] = pho_ids
             sample['text_tone'] = tone_ids
             sample['text_lang'] = lang_ids
             sample['text_prsd'] = prsd_ids
 
         if mode == 'inference':
             pho_ids1, tone_ids1, lang_ids1, prsd_ids1 = tokenizer.encode(sample['tts_text'])
-            sample['tts_text_token'] = pho_ids1
+            sample['tts_pho_token'] = pho_ids1
             sample['tts_text_tone'] = tone_ids1
             sample['tts_text_lang'] = lang_ids1
             sample['tts_text_prsd'] = prsd_ids1
@@ -461,24 +461,11 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
         speech = [sample[i]['speech'].squeeze(dim=0) for i in order]
         speech_len = torch.tensor([i.size(0) for i in speech], dtype=torch.int32)
         speech = pad_sequence(speech, batch_first=True, padding_value=0)
-        # speech_token = [torch.tensor(sample[i]['speech_token']) for i in order]
-        # speech_token_len = torch.tensor([i.size(0) for i in speech_token], dtype=torch.int32)
-        # speech_token = pad_sequence(speech_token,
-        #                             batch_first=True,
-        #                             padding_value=0)
-        # utt_embedding = torch.stack([sample[i]['utt_embedding'] for i in order], dim=0)
-        # spk_embedding = torch.stack([sample[i]['spk_embedding'] for i in order], dim=0)
 
         batch = {
             "utts": utts,
             "speech": speech,
             "speech_len": speech_len,
-            # "speech_token": speech_token,
-            # "speech_token_len": speech_token_len,
-            # "speech_feat": speech_feat,
-            # "speech_feat_len": speech_feat_len,
-            # "utt_embedding": utt_embedding,
-            # "spk_embedding": spk_embedding,
         }
         if 'speech_feat' in sample[0]:
             speech_feat = [sample[i]['speech_feat'] for i in order]
@@ -506,6 +493,9 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
 
 
         if 'text_tone' in sample[0]:
+            pho_token = [torch.tensor(sample[i]['pho_token']) for i in order]
+            pho_token_len = torch.tensor([i.size(0) for i in pho_token], dtype=torch.int32)
+            pho_token = pad_sequence(pho_token, batch_first=True,padding_value=0)
             text_tone = [torch.tensor(sample[i]['text_tone']) for i in order]
             text_tone = pad_sequence(text_tone, batch_first=True, padding_value=0)
             text_lang = [torch.tensor(sample[i]['text_lang']) for i in order]
@@ -513,10 +503,13 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
             text_prsd = [torch.tensor(sample[i]['text_prsd']) for i in order]
             text_prsd = pad_sequence(text_prsd, batch_first=True, padding_value=0)
 
-            batch['text_token'] = torch.cat([text_token.unsqueeze(-1),
+
+
+            batch['pho_token'] = torch.cat([pho_token.unsqueeze(-1),
                                              text_tone.unsqueeze(-1),
                                              text_lang.unsqueeze(-1),
                                              text_prsd.unsqueeze(-1)], dim=-1)
+            batch['pho_token_len'] = pho_token_len
 
         if gan is True:
             # in gan train, we need pitch_feat
@@ -527,10 +520,7 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
                                       padding_value=0)
             batch["pitch_feat"] = pitch_feat
             batch["pitch_feat_len"] = pitch_feat_len
-        # else:
-        #     # only gan train needs speech, delete it to save memory
-        #     del batch["speech"]
-        #     del batch["speech_len"]
+
         if mode == 'inference':
             tts_text = [sample[i]['tts_text'] for i in order]
             tts_text_token = [torch.tensor(sample[i]['tts_text_token']) for i in order]
@@ -559,8 +549,5 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
                                                  text_lang.unsqueeze(-1),
                                                  text_prsd.unsqueeze(-1)],
                                                 dim=-1)
-        # if use_spk_embedding is True:
-        #     batch["embedding"] = batch["spk_embedding"]
-        # else:
-        #     batch["embedding"] = batch["utt_embedding"]
+
         yield batch
