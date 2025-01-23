@@ -296,7 +296,8 @@ def update_parameter_and_lr(model, optimizer, scheduler, scaler, info_dict):
             # We don't check grad here since that if the gradient
             # has inf/nan values, scaler.step will skip
             # optimizer.step().
-            scaler.step(optimizer)
+            if torch.isfinite(grad_norm):
+                scaler.step(optimizer)
             scaler.update()
         else:
             grad_norm = clip_grad_norm_(model.parameters(), info_dict['grad_clip'])

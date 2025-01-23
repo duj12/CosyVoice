@@ -1,7 +1,7 @@
 import torchaudio
 import os
-import itertools
-from cosyvoice.cli.cosyvoice import CosyVoice
+import torch
+from cosyvoice.cli.cosyvoice import CosyVoice, CosyVoice2
 from cosyvoice.utils.file_utils import load_wav
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
@@ -33,29 +33,18 @@ sensevoice = AutoModel(
 # output = cosyvoice.inference_sft('The problems of efficiency today are less drastic but more chronic, they can also prolong the evils that they were intended to solve and took the electronic medical record. It seemed to be the answer to the problem of doctors handwriting, and it had the benefit of providing much better data for treatments. In practice, it has meant much more electronic paperwork and physicians are now complaining that they have less rather than more time to see patients individually. The obsession with efficiency can actually make us less efficient.', '英文男')
 # torchaudio.save('sft-en.wav', output['tts_speech'], 24000)
 
-cosyvoice = CosyVoice('pretrained_models/CosyVoice-300M-25Hz')
+# cosyvoice = CosyVoice('pretrained_models/CosyVoice-300M-25Hz')
+cosyvoice = CosyVoice2('pretrained_models/CosyVoice2-0.5B')
+
 # zero_shot usage
 ref_audios = [
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_3_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_5_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_6_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_8_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_11_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_14_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_18_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_20_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/CN_21_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/EN_4_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/EN_15_30s.wav',
-    # '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/test/EN_22_30s.wav',
-
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/jim_10s.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/caikangyong_10s.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/ASR_lingli_10s.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/ASR_lola_10s.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/jyr/ASR_jiangyueren_10s.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/dubbing.wav',
-    '/data/megastore/Projects/DuJing/code/TTS/tts/ref_audios/cute2.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/jim_10s.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/caikangyong_10s.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/ASR_lingli_10s.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/ASR_lola_10s.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/jyr/ASR_jiangyueren_10s.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/dubbing.wav',
+    '/data/megastore/SHARE/TTS/ref_audios/cute2.wav',
 ]
 
 texts = [
@@ -104,13 +93,17 @@ for ref_audio in ref_audios:
                 #text = "<|en|>" + text
                 text+="."
 
+            cur_wave = []
             for i,j in enumerate(cosyvoice.inference_zero_shot(
                     text,
                     prompt_text,
                     prompt_speech_16k,
-                    stream=False)):
+                    stream=True)):
 
-                torchaudio.save(f'{id}_{text[0:10]}_{i}.wav', j['tts_speech'], 24000)
+                cur_wave.append(j['tts_speech'])
+
+            wave = torch.cat(cur_wave, dim=-1)
+            torchaudio.save(f'{id}_{text[0:10]}.wav', wave, 24000)
 
 
 
