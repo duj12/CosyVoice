@@ -191,7 +191,7 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
         self.vocab_size = vocab_size
         self.output_type = output_type
         self.input_frame_rate = input_frame_rate
-        logging.info(f"input frame rate={self.input_frame_rate}")
+        logger.info(f"input frame rate={self.input_frame_rate}")
         self.input_embedding = nn.Embedding(vocab_size, input_size)
         self.spk_embed_affine_layer = torch.nn.Linear(spk_embed_dim, output_size)
         self.encoder = encoder
@@ -200,6 +200,60 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
         self.only_mask_loss = only_mask_loss
         self.token_mel_ratio = token_mel_ratio
         self.pre_lookahead_len = pre_lookahead_len
+
+    def forward(
+            self,
+            batch: dict,
+            device: torch.device,
+    ) -> Dict[str, Optional[torch.Tensor]]:
+        token = batch['speech_token'].to(device)
+        token_len = batch['speech_token_len'].to(device)
+        feat = batch['speech_feat'].to(device)
+        feat_len = batch['speech_feat_len'].to(device)
+
+        # fix frame length mismatch
+        max_feat_len = feat.size(1)
+        max_token_len = max_feat_len // self.token_mel_ratio
+        token = token[:, :max_token_len]
+        token_len = torch.where(token_len > max_token_len, torch.tensor(max_token_len), token_len)
+        max_feat_len = max_token_len * self.token_mel_ratio
+        feat = feat[:, :max_feat_len]
+        feat_len = torch.where(feat_len > max_feat_len, torch.tensor(max_feat_len), feat_len)
+
+        embedding = batch['embedding'].to(device)
+
+        # xvec projection
+        embedding = F.normalize(embedding, dim=1)
+        embedding = self.spk_embed_affine_layer(embedding)
+
+        # concat text and prompt_text
+        mask = (~make_pad_mask(token_len)).float().unsqueeze(-1).to(device)
+        token = self.input_embedding(torch.clamp(token, min=0)) * mask
+
+        # text encode
+        h, h_lengths = self.encoder(token, token_len)
+        h = self.encoder_proj(h)
+
+        # get conditions
+        conds = torch.zeros(feat.shape, device=token.device)
+        for i, j in enumerate(feat_len):
+            if random.random() < 0.5:
+                continue
+            index = random.randint(0, int(0.3 * j))
+            conds[i, :index] = feat[i, :index]
+        conds = conds.transpose(1, 2)
+
+        mask = (~make_pad_mask(feat_len)).to(h)
+        feat = F.interpolate(feat.unsqueeze(dim=1), size=h.shape[1:], mode="nearest").squeeze(dim=1)
+        loss, _ = self.decoder.compute_loss(
+            feat.transpose(1, 2).contiguous(),
+            mask.unsqueeze(1),
+            h.transpose(1, 2).contiguous(),
+            embedding,
+            cond=conds
+        )
+        return {'loss': loss}
+
 
     @torch.inference_mode()
     def inference(self,

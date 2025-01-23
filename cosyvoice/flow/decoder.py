@@ -261,7 +261,7 @@ class ConditionalDecoder(nn.Module):
                     x, mask_down.bool(), self.use_dynamic_chunk,
                     use_dynamic_left_chunk=False, decoding_chunk_size=0,
                     static_chunk_size=0, num_decoding_left_chunks=-1,
-                    max_dynamic_chunk_size=96,
+                    max_dynamic_chunk_size=100,
                 )
             elif not self.training:
                 attn_mask = add_optional_chunk_mask(x, mask_down.bool(), False, False, 0, self.static_chunk_size, -1)
@@ -289,7 +289,7 @@ class ConditionalDecoder(nn.Module):
                     x, mask_mid.bool(), self.use_dynamic_chunk,
                     use_dynamic_left_chunk=False, decoding_chunk_size=0,
                     static_chunk_size=0, num_decoding_left_chunks=-1,
-                    max_dynamic_chunk_size=48,
+                    max_dynamic_chunk_size=50,
                 )
             elif not self.training:
                 attn_mask = add_optional_chunk_mask(x, mask_mid.bool(), False, False, 0, self.static_chunk_size, -1)
@@ -315,7 +315,7 @@ class ConditionalDecoder(nn.Module):
                     x, mask_up.bool(), self.use_dynamic_chunk,
                     use_dynamic_left_chunk=False, decoding_chunk_size=0,
                     static_chunk_size=0, num_decoding_left_chunks=-1,
-                    max_dynamic_chunk_size=96,
+                    max_dynamic_chunk_size=100,
                 )
             elif not self.training:
                 attn_mask = add_optional_chunk_mask(x, mask_up.bool(), False, False, 0, self.static_chunk_size, -1)
