@@ -382,9 +382,11 @@ def init_json_dataset(args, configs, gan, train_data_indexes):
 
     train_data = [configs['train_data'][i] for i in train_data_indexes]
     rich_sample = configs.get('rich_sample_short_utt', 0)
+    need_text = configs.get('need_text', True)
     train_dataset = JsonDataset(train_data, data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=True,
-                                partition=True, rich_sample_short_utt=rich_sample)
-    cv_dataset = JsonDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan, shuffle=False, partition=False)
+                                partition=True, rich_sample_short_utt=rich_sample, need_text=need_text)
+    cv_dataset = JsonDataset(configs['cv_data'], data_pipeline=data_pipeline, mode='train', gan=gan,
+                             shuffle=False, partition=False, need_text=need_text)
 
     # do not use persistent_workers=True, as whisper tokenizer opens tiktoken file each time when the for loop starts
     train_data_loader = DataLoader(train_dataset,

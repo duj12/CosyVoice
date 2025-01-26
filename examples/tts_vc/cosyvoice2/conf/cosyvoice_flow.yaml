@@ -20,6 +20,8 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: False  # whether use human labeled or MFA aligned pause labels
 
+need_text: False  # whether dataset need text
+
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
@@ -192,8 +194,6 @@ transcribe: !name:cosyvoice.dataset.processor_kaldidata.transcribe
     get_transcriber: !ref <get_transcriber>
 # dataset processor pipeline
 data_pipeline: [
-    !ref <tokenize>,
-    !ref <tokenize_pho>,
     !ref <filter>,
     !ref <resample>,
     !ref <compute_fbank>,

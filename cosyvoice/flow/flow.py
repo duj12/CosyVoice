@@ -264,7 +264,10 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
                   prompt_feat,
                   prompt_feat_len,
                   embedding,
-                  finalize):
+                  flow_cache=None,
+                  sample_rate=24000,
+                  n_timesteps=10,
+                  finalize=True):
         if self.fp16 is True:
             prompt_feat = prompt_feat.half()
             embedding = embedding.half()
@@ -297,7 +300,7 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
             mask=mask.unsqueeze(1),
             spks=embedding,
             cond=conds,
-            n_timesteps=10
+            n_timesteps=n_timesteps
         )
         feat = feat[:, :, mel_len1:]
         assert feat.shape[2] == mel_len2

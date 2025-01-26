@@ -110,13 +110,14 @@ class DistributedSampler:
 class DataList(IterableDataset):
 
     def __init__(self, lists, utt2wav, utt2text, utt2pho, utt2spk,
-                 shuffle=True, partition=True, tts_text=None, eval=False):
+                 shuffle=True, partition=True, tts_text=None, eval=False, need_text=True):
         self.lists = lists
         self.utt2wav = utt2wav
         self.utt2text = utt2text
         self.utt2pho = utt2pho
         self.utt2spk = utt2spk
         self.tts_text = tts_text  # a list, each prompt will generate all texts in the list
+        self.need_text = need_text
         if not eval:
             self.sampler = DistributedSampler(shuffle, partition)
         else:
@@ -139,14 +140,17 @@ class DataList(IterableDataset):
             sample = {}
             sample['utt'] = utt
             sample['wav'] = self.utt2wav[utt]
-            if utt not in self.utt2text:
-                logging.warning(f'key {utt} not in self.utt2text. jumped.')
-                continue
-            if utt not in self.utt2pho:
-                logging.warning(f'key {utt} not in self.utt2pho. jumped.')
-                continue
-            sample['text'] = self.utt2text[utt]
-            sample['pho'] = self.utt2pho[utt]
+            if self.need_text:
+                if utt not in self.utt2text:
+                    logging.warning(f'key {utt} not in self.utt2text. jumped.')
+                    continue
+                else:
+                    sample['text'] = self.utt2text[utt]
+                if utt not in self.utt2pho:
+                    logging.warning(f'key {utt} not in self.utt2pho. jumped.')
+                    continue
+                else:
+                    sample['pho'] = self.utt2pho[utt]
             if utt in self.utt2spk:
                 sample['spk'] = self.utt2spk[utt]
             else:
@@ -171,7 +175,8 @@ def Dataset(json_file,
             partition=True,
             tts_file=None,
             eval=False,
-            rich_sample_short_utt=0
+            rich_sample_short_utt=0,
+            need_text=True
     ):
     """ Construct dataset from arguments
 
@@ -286,7 +291,7 @@ def Dataset(json_file,
 
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2pho, utt2spk,
                        shuffle=shuffle, partition=partition,
-                       tts_text=tts_text, eval=eval)
+                       tts_text=tts_text, eval=eval, need_text=need_text)
 
     if gan is True:
         # map partial arg to padding func in gan mode

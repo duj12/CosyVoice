@@ -180,8 +180,12 @@ def resample(data, resample_rate=24000, min_sample_rate=16000, mode='train'):
                 logging.warning(f"audio sample_rate {sample['sample_rate']} less than {min_sample_rate}, the clip is droped")
                 continue
             sample['sample_rate'] = resample_rate
-            sample['speech'] = torchaudio.transforms.Resample(
-                orig_freq=sample_rate, new_freq=resample_rate)(waveform)
+            try:
+                sample['speech'] = torchaudio.transforms.Resample(
+                    orig_freq=sample_rate, new_freq=resample_rate)(waveform)
+            except Exception:
+                logging.error(f"resample {sample['wav']} failed. continue.")
+                continue
         max_val = sample['speech'].abs().max()
         if max_val > 1:
             sample['speech'] /= max_val

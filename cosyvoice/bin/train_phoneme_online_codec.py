@@ -183,7 +183,7 @@ def main():
         if scheduler_d is not None:
             scheduler_d.set_step(resume_info["step"])
         if 'data_idx' in resume_info:
-            executor.data_idx = resume_info['data_idx']
+            executor.data_idx = resume_info['data_idx'] + 1
 
     executor.configs = configs
     # Init scaler, used for pytorch amp mixed precision training
@@ -194,6 +194,8 @@ def main():
         executor.epoch = epoch
 
         for data_i, data_indexes in enumerate(configs['train_data_indexes']):
+            if executor.data_idx >= len(configs['train_data_indexes']) - 1:
+                executor.data_idx = 0
             if data_i != executor.data_idx:
                 logging.warning(f"Jumped train data {data_indexes}")
                 continue
@@ -215,7 +217,7 @@ def main():
                                         writer, info_dict, scaler, group_join, codec_model, spkemb_model)
 
             executor.data_idx = data_i + 1
-            if data_i == len(configs['train_data_indexes']) - 1:
+            if data_i >= len(configs['train_data_indexes']) - 1:
                 executor.data_idx = 0
 
             del train_dataset

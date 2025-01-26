@@ -1258,7 +1258,7 @@ class Qwen2LM_Phoneme(torch.nn.Module):
             max_token_text_ratio: float = 20,
             min_token_text_ratio: float = 2,
     ) -> Generator[torch.Tensor, None, None]:
-        device = text.device
+        device = embedding.device
 
         text, pho = text
         text_len, pho_len = text_len
