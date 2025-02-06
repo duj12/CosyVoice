@@ -21,7 +21,7 @@ from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from cosyvoice.utils.common import IGNORE_ID, th_accuracy
 from cosyvoice.transformer.label_smoothing_loss import LabelSmoothingLoss
 from cosyvoice.utils.mask import make_pad_mask, add_optional_chunk_mask
-import logging
+import logging, random
 
 logger = logging.getLogger(__name__)
 
@@ -1076,6 +1076,7 @@ class Qwen2LM_Phoneme(torch.nn.Module):
             spk_embed_dim: int = 512,
             use_frontend_prsd: bool = False,
             use_pause_label: bool = False,
+            text_emb_mask_prob: float = 0.5,
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -1091,7 +1092,8 @@ class Qwen2LM_Phoneme(torch.nn.Module):
         ])
         self.use_frontend_prsd = use_frontend_prsd
         self.use_pause_label = use_pause_label
-        logger.info(f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}")
+        self.text_emb_mask_prob = text_emb_mask_prob
+        logger.info(f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}, text_emb_mask_prob:{text_emb_mask_prob}")
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(
@@ -1189,6 +1191,8 @@ class Qwen2LM_Phoneme(torch.nn.Module):
         pho_token, pho_token_len = self.encode(pho_token, pho_token_len)
 
         text_token = self.llm.model.model.embed_tokens(text_token)
+        if random.random() < self.text_emb_mask_prob and self.training:
+            text_token *= 0.0  # mask text embedding, only depend on phoneme embedding.
 
         # 2. embedding projection
         embedding = F.normalize(embedding, dim=1)

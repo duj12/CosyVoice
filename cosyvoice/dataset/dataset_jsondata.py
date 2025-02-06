@@ -278,7 +278,9 @@ def Dataset(json_file,
     else:
         add_one_data(json_file)
 
-    # valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    if need_text:
+        valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    logging.info(f"Total utts: {len(utt2wav.keys())}. Actual total samples {len(valid_utt_list)}")
 
     tts_text = None
     if mode=="inference" and os.path.exists(tts_file):
