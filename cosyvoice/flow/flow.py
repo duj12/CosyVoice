@@ -267,12 +267,20 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
                   flow_cache=None,
                   sample_rate=24000,
                   n_timesteps=10,
+                  begin=False,
                   finalize=True):
         if self.fp16 is True:
             prompt_feat = prompt_feat.half()
             embedding = embedding.half()
 
         assert token.shape[0] == 1
+        # 将prompt feat长度变为上采样倍率的倍数，避免codec上采样到mel时，由于prompt长度不是倍数导致多出一帧
+        if prompt_feat_len[0] % self.token_mel_ratio != 0 :
+            prompt_feat_len[0] -= prompt_feat_len[0] % self.token_mel_ratio
+            prompt_feat = prompt_feat[:, :prompt_feat_len[0], :]
+            prompt_token_len[0] = prompt_feat_len[0] // self.token_mel_ratio
+            prompt_token = prompt_token[:, :prompt_token_len[0]]
+
         # xvec projection
         embedding = F.normalize(embedding, dim=1)
         embedding = self.spk_embed_affine_layer(embedding)
@@ -284,8 +292,11 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
 
         # text encode
         h, h_lengths = self.encoder(token, token_len)
-        if finalize is False:
-            h = h[:, :-self.pre_lookahead_len * self.token_mel_ratio]
+        # if finalize is False:
+        #     h = h[:, :-self.pre_lookahead_len * self.token_mel_ratio]
+        # if not begin:  # 不是开头第一个chunk, 那么需要把拼接的历史codec去掉
+        #     h = h[:, self.lookback_len * self.token_mel_ratio:]
+
         mel_len1, mel_len2 = prompt_feat.shape[1], h.shape[1] - prompt_feat.shape[1]
         h = self.encoder_proj(h)
 
