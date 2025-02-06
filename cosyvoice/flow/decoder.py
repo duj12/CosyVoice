@@ -263,9 +263,9 @@ class ConditionalDecoder(nn.Module):
                     static_chunk_size=0, num_decoding_left_chunks=-1,
                     max_dynamic_chunk_size=100,
                 )
-            elif not self.training:
-                attn_mask = add_optional_chunk_mask(x, mask_down.bool(), False, False, 0, self.static_chunk_size, -1)
-            attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
+            # elif not self.training:
+            #     attn_mask = add_optional_chunk_mask(x, mask_down.bool(), False, False, 0, self.static_chunk_size, -1)
+            # attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(
@@ -291,9 +291,9 @@ class ConditionalDecoder(nn.Module):
                     static_chunk_size=0, num_decoding_left_chunks=-1,
                     max_dynamic_chunk_size=50,
                 )
-            elif not self.training:
-                attn_mask = add_optional_chunk_mask(x, mask_mid.bool(), False, False, 0, self.static_chunk_size, -1)
-            attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
+            # elif not self.training:
+            #     attn_mask = add_optional_chunk_mask(x, mask_mid.bool(), False, False, 0, self.static_chunk_size, -1)
+            # attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(
@@ -317,9 +317,9 @@ class ConditionalDecoder(nn.Module):
                     static_chunk_size=0, num_decoding_left_chunks=-1,
                     max_dynamic_chunk_size=100,
                 )
-            elif not self.training:
-                attn_mask = add_optional_chunk_mask(x, mask_up.bool(), False, False, 0, self.static_chunk_size, -1)
-            attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
+            # elif not self.training:
+            #     attn_mask = add_optional_chunk_mask(x, mask_up.bool(), False, False, 0, self.static_chunk_size, -1)
+            # attn_mask = mask_to_bias(attn_mask == 1, x.dtype)
 
             for transformer_block in transformer_blocks:
                 x = transformer_block(
