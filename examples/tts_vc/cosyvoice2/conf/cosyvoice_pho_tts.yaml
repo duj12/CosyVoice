@@ -59,7 +59,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme
         macaron_style: False
         use_dynamic_chunk: False
         use_dynamic_left_chunk: False
-        static_chunk_size: 1
+        static_chunk_size: -1
     llm: !new:cosyvoice.llm.llm.Qwen2Encoder
         pretrain_path: !ref <qwen_pretrain_path>
     sampling: !name:cosyvoice.utils.common.non_random_ras_sampling
