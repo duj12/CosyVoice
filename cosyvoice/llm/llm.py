@@ -1318,9 +1318,11 @@ class Qwen2LM_Phoneme(torch.nn.Module):
         out_tokens = []
         cache = None
         for i in range(max_len):
-            y_pred, cache = self.llm.forward_one_step(lm_input,
-                                                      masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
-                                                      cache=cache)
+            y_pred, cache = self.llm.forward_one_step(
+                lm_input,
+                # masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
+                masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device).to(torch.bool),
+                cache=cache)
             logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
             top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens, sampling, ignore_eos=True if i < min_len else False).item()
             if top_ids == self.speech_token_size:
@@ -1609,9 +1611,12 @@ class Qwen2LM_Phoneme_Src(torch.nn.Module):
         out_tokens = []
         cache = None
         for i in range(max_len):
-            y_pred, cache = self.llm.forward_one_step(lm_input,
-                                                      masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
-                                                      cache=cache)
+            y_pred, cache = self.llm.forward_one_step(
+                lm_input,
+                # masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
+                masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]),
+                                 device=lm_input.device).to(torch.bool),
+                cache=cache)
             logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
             top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens, sampling, ignore_eos=True if i < min_len else False).item()
             if top_ids == self.speech_token_size:
@@ -1899,9 +1904,12 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
         out_tokens = []
         cache = None
         for i in range(max_len):
-            y_pred, cache = self.llm.forward_one_step(lm_input,
-                                                      masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
-                                                      cache=cache)
+            y_pred, cache = self.llm.forward_one_step(
+                lm_input,
+                # masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
+                masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]),
+                                 device=lm_input.device).to(torch.bool),
+                cache=cache)
             logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
             top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens, sampling, ignore_eos=True if i < min_len else False).item()
             if top_ids == self.speech_token_size:
