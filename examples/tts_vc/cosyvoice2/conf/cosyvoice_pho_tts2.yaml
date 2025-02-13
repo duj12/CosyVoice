@@ -18,7 +18,7 @@ spk_audio_crop: 10
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
-use_pause_label: False  # whether use human labeled or MFA aligned pause labels
+use_pause_label: True  # whether use human labeled or MFA aligned pause labels
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
@@ -40,7 +40,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    use_frontend_prsd: False
+    use_frontend_prsd: True
     use_pause_label: !ref <use_pause_label>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
@@ -180,7 +180,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 4
+    batch_size: 8
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft

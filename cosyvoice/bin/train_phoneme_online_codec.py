@@ -34,7 +34,8 @@ from cosyvoice.utils.train_utils import (
     get_latest_ckpt, get_resume_params,
     init_json_dataset, init_codec_and_embed_model
 )
-
+torch.backends.cuda.matmul.allow_tf32 = True  # speedup large matrix multiply
+torch.backends.cudnn.allow_tf32 = True  # speedup conv layers
 
 def get_args():
     parser = argparse.ArgumentParser(description='training your network')
