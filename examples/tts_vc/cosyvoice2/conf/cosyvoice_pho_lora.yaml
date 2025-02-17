@@ -4,6 +4,12 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+# LoRA
+use_lora: True
+lora_r: 16
+lora_alpha: 16
+lora_init_weights: "normal"
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000
@@ -416,11 +422,11 @@ train_data: [
 
 ]
 
-train_data_indexes0: [
+train_data_indexes: [
     [0,1,2,3,4,5]
 ]
 
-train_data_indexes: [
+train_data_indexes1: [
     [16,17], [18,19], [20,21], [22,23], [24,25],
     [156,157], [158,159], [160,161], [162,163], [164,165],
     [166,167],

@@ -116,6 +116,15 @@ def main():
 
     # load checkpoint
     model = configs[args.model]
+
+    # add additional LoRA parameters
+    use_lora = configs.get("use_lora", False)
+    if use_lora:
+        import cosyvoice.loralib as lora
+        model = lora.replace_specific_layer_4lora(model, configs)
+        lora.mark_only_lora_as_trainable(model)
+        lora.getModelSize_lora(model)
+
     start_epoch = 0
     resume_info = None
     if args.checkpoint is not None:

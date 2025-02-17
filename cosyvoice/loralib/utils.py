@@ -1,16 +1,12 @@
-#  ------------------------------------------------------------------------------------------
-#  Copyright (c) Microsoft Corporation. All rights reserved.
-#  Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
-#  ------------------------------------------------------------------------------------------
 import torch
 import torch.nn as nn
 import logging
 logger = logging.getLogger(__name__)
 
 from typing import Dict
-
 from torch.nn.utils import weight_norm, remove_weight_norm
-from .layers import LoRALayer, Linear, Embedding, Conv1d, ConvTranspose1d
+from .layers import LoRALayer, Linear, Embedding, Conv1d, ConvTranspose1d, CausalConv1d
+from cosyvoice.flow.decoder import CausalConv1d as Cosy_CausalConv1d
 
 def mark_only_lora_as_trainable(model: nn.Module, bias: str = 'none') -> None:
     for n, p in model.named_parameters():
@@ -61,7 +57,7 @@ def lora_state_dict(model: nn.Module, bias: str = 'none') -> Dict[str, torch.Ten
     else:
         raise NotImplementedError
 
-def getModelSize_lora(model, hps):
+def getModelSize_lora(model, lora_bias="none"):
     param_size_dict = {}
     for name, module in model.named_modules():
         if not isinstance(module, LoRALayer):
@@ -76,7 +72,7 @@ def getModelSize_lora(model, hps):
             param_size_dict[parent_name] += param.nelement() * param.element_size() / 1024 / 1024
             param = module.lora_B
             param_size_dict[parent_name] += param.nelement() * param.element_size() / 1024 / 1024
-        if hps.lora_bias == "lora_only":
+        if lora_bias == "lora_only":
             if hasattr(module, 'bias'):
                 if module.bias is not None:
                     param = module.bias
@@ -85,41 +81,19 @@ def getModelSize_lora(model, hps):
     buffer_size = 0
     for buffer in model.buffers():
         buffer_size += buffer.nelement() * buffer.element_size()
-        # buffer_sum += buffer.nelement()
 
-    # all_size = (param_size + buffer_size) / 1024 / 1024
     all_size = 0
     for key, param_size in param_size_dict.items():
         logger.info(f"lora节点{key}大小为：{param_size:.3f}MB")
         all_size += param_size
     logger.info(f"lora模型总大小为：{all_size:.3f}MB")
-    if "enc_q" in param_size_dict:
-        logger.info(f"lora模型去除enc_q总大小为：{all_size-param_size_dict['enc_q']:.3f}MB")
     return
 
-def adjust_r(name, hps, lora_r):
-    lora_max = hps.lora_max
-    lora_min = hps.lora_min
-
-    father_type = name.split(".")[0]
-    lora_lambda = getattr(hps, "lora_lambda_{}".format(father_type), 1.0)
-
-    if father_type in ["flow", "dec", "dur", "enc_p", "enc_q",
-                       "speaker_encoder", "style_encoder", "gst"]:
-        lora_r = int(lora_r * lora_lambda)
-
-    return lora_r
-
 def replace_specific_layer_4lora(model, hps):
-    lora_r = hps.lora_r #16
-    lora_alpha = hps.lora_alpha #32
-    lora_dropout = hps.lora_dropout #0.01
-    lora_max = hps.lora_max #8
-    lora_mid_scale = hps.lora_mid_scale #16
-    lora_min = hps.lora_min #2
-    lora_init_weights = hps.lora_init_weights
-
-    unique_dim = 4
+    lora_r_new = hps["lora_r"]
+    lora_alpha = hps["lora_alpha"]
+    lora_dropout = 0.01
+    lora_init_weights = hps.get("lora_init_weights", "normal")
 
     # Recursively visit all modules and submodules
     for name, module in model.named_modules():
@@ -128,56 +102,58 @@ def replace_specific_layer_4lora(model, hps):
             out_features, in_features = module.weight.shape
             device = module.weight.device
             dtype = module.weight.dtype
-
-            lora_init_weights_local = "normal" if out_features<=unique_dim or in_features<=unique_dim else lora_init_weights
-            lora_r_new = adjust_r(name, hps, lora_r)
-            # print("{} {} r:{} in_feat:{} out_feat:{}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", lora_r_new, in_features, out_features), device)
-            localnet = Linear(in_features, out_features, bias=False if module.bias is None else True, 
-                r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=hps.merge_weights, 
-                lora_init_weights=lora_init_weights_local)
+            localnet = Linear(in_features, out_features, bias=False if module.bias is None else True,
+                r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=False,
+                lora_init_weights=lora_init_weights)
             localnet.to(dtype)
             localnet.to(device)
             set_layer_from_name(model, name, localnet)
+
         elif isinstance(module, torch.nn.Embedding):
             num_embeddings, embedding_dim = module.weight.shape
             device = module.weight.device
             dtype = module.weight.dtype
-
-            lora_init_weights_local = "normal"
-            lora_r_new = adjust_r(name, hps, lora_r)
-            # print("{} {} r:{} num_emb:{} emb_dim:{}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", lora_r_new, num_embeddings, embedding_dim), device)
-            localnet = Embedding(num_embeddings, embedding_dim, 
-                r=lora_r_new, lora_alpha=lora_alpha, merge_weights=hps.merge_weights, 
-                lora_init_weights=lora_init_weights_local)
+            localnet = Embedding(num_embeddings, embedding_dim,
+                r=lora_r_new, lora_alpha=lora_alpha, merge_weights=False,
+                lora_init_weights=lora_init_weights)
             localnet.to(dtype)
             localnet.to(device)
             set_layer_from_name(model, name, localnet)
         elif isinstance(module, torch.nn.Conv1d):
-            # device = "cuda:0" 
-            device = module.weight.device ### NOTE 很恶心
+            device = module.weight.device
             dtype = module.weight.dtype
-            lora_r_new = min(lora_max, lora_r, max(((module.in_channels + module.out_channels)//2)//lora_mid_scale, lora_min))
-            lora_r_new = adjust_r(name, hps, lora_r_new)
 
-            lora_init_weights_local = lora_init_weights
-            if "noconvk" in hps.lora_init_weights:
-                lora_init_weights_local = "normal" if module.kernel_size[0]>1 else lora_init_weights
-            if getattr(module, "weight_g", None) is not None and "nownorm" in hps.lora_init_weights:
-                lora_init_weights_local = "normal"
-            # print("{} {} r:{} in_c:{} out_c:{} ker:{}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", lora_r_new, module.in_channels, module.out_channels, module.kernel_size[0]), device)
-            localnet = Conv1d(
-                in_channels=module.in_channels, 
-                out_channels=module.out_channels, 
-                kernel_size=module.kernel_size[0], 
-                stride=module.stride,
-                padding=module.padding, 
-                dilation=module.dilation, 
-                groups=module.groups, 
-                device=module.weight.device,
-                dtype=module.weight.dtype,
-                bias=False if module.bias is None else True,
-                r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=hps.merge_weights, 
-                lora_init_weights=lora_init_weights_local)
+            if isinstance(module, Cosy_CausalConv1d):
+                localnet = CausalConv1d(
+                    in_channels=module.in_channels,
+                    out_channels=module.out_channels,
+                    kernel_size=module.kernel_size[0],
+                    stride=module.stride,
+                    padding=module.padding,
+                    dilation=module.dilation,
+                    groups=module.groups,
+                    device=module.weight.device,
+                    dtype=module.weight.dtype,
+                    bias=False if module.bias is None else True,
+                    r=lora_r_new, lora_alpha=lora_alpha,
+                    lora_dropout=lora_dropout, merge_weights=False,
+                    lora_init_weights=lora_init_weights
+                )
+            else:
+                localnet = Conv1d(
+                    in_channels=module.in_channels,
+                    out_channels=module.out_channels,
+                    kernel_size=module.kernel_size[0],
+                    stride=module.stride,
+                    padding=module.padding,
+                    dilation=module.dilation,
+                    groups=module.groups,
+                    device=module.weight.device,
+                    dtype=module.weight.dtype,
+                    bias=False if module.bias is None else True,
+                    r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=False,
+                    lora_init_weights=lora_init_weights
+                )
             # 判断是否有weight_norm 会修改weight！
             if getattr(module, "weight_g", None) is not None:
                 localnet = weight_norm(localnet)
@@ -188,15 +164,7 @@ def replace_specific_layer_4lora(model, hps):
         elif isinstance(module, torch.nn.ConvTranspose1d):
             device = module.weight.device
             dtype = module.weight.dtype
-            lora_r_new = min(lora_max, lora_r, max(((module.in_channels + module.out_channels)//2)//lora_mid_scale, lora_min))
-            lora_r_new = adjust_r(name, hps, lora_r_new)
 
-            lora_init_weights_local = lora_init_weights
-            if "noconvk" in hps.lora_init_weights:
-                lora_init_weights_local = "normal" if module.kernel_size[0]>1 else lora_init_weights
-            if getattr(module, "weight_g", None) is not None and "nownorm" in hps.lora_init_weights:
-                lora_init_weights_local = "normal"
-            # print("{} {} r:{} in_c:{} out_c:{} trans ker:{}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", lora_r_new, module.in_channels, module.out_channels, module.kernel_size[0]), device)
             localnet = ConvTranspose1d(
                 in_channels=module.in_channels, 
                 out_channels=module.out_channels, 
@@ -209,8 +177,8 @@ def replace_specific_layer_4lora(model, hps):
                 device=module.weight.device,
                 dtype=module.weight.dtype,
                 bias=False if module.bias is None else True,
-                r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=hps.merge_weights, 
-                lora_init_weights=lora_init_weights_local)
+                r=lora_r_new, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=False,
+                lora_init_weights=lora_init_weights)
             # NOTE 判断是否有weight_norm 会修改weight！
             if getattr(module, "weight_g", None) is not None:
                 localnet = weight_norm(localnet)
@@ -218,77 +186,6 @@ def replace_specific_layer_4lora(model, hps):
             localnet.to(dtype)
             localnet.to(device)
             set_layer_from_name(model, name, localnet)
-        elif isinstance(module, torch.nn.Conv2d):
-            # print(f"{name}, {module} is not supported now.")
-            pass
-
-    return model
-
-def init_pissa_weight(model, hps):
-    lora_r = hps.lora_r #16
-    lora_alpha = hps.lora_alpha #32
-    lora_dropout = hps.lora_dropout #0.01
-    lora_max = hps.lora_max #8
-    lora_mid_scale = hps.lora_mid_scale #16
-    lora_min = hps.lora_min #2
-    lora_init_weights = hps.lora_init_weights
-
-    if "pissa" not in lora_init_weights:
-        return model
-
-    unique_dim = 4
-
-    # Recursively visit all modules and submodules
-    for name, module in model.named_modules():
-        # Check if the module is an instance of the specified layers
-        if isinstance(module, torch.nn.Linear):
-            out_features, in_features = module.weight.shape
-            device = module.weight.device
-            dtype = module.weight.dtype
-
-            lora_init_weights_local = "normal" if out_features<=unique_dim or in_features<=unique_dim else lora_init_weights
-            lora_r_new = adjust_r(name, hps, lora_r)
-            # print("init {} {} {}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", device))
-            module.init_parameters()
-        elif isinstance(module, torch.nn.Embedding):
-            num_embeddings, embedding_dim = module.weight.shape
-            device = module.weight.device
-            dtype = module.weight.dtype
-
-            lora_init_weights_local = "normal"
-            lora_r_new = adjust_r(name, hps, lora_r)
-            # print("init {} {} {}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", device))
-            module.init_parameters()
-        elif isinstance(module, torch.nn.Conv1d):
-            device = module.weight.device
-            dtype = module.weight.dtype
-            lora_r_new = min(lora_max, lora_r, max(((module.in_channels + module.out_channels)//2)//lora_mid_scale, lora_min))
-            lora_r_new = adjust_r(name, hps, lora_r_new)
-
-            lora_init_weights_local = lora_init_weights
-            if "noconvk" in hps.lora_init_weights:
-                lora_init_weights_local = "normal" if module.kernel_size[0]>1 else lora_init_weights
-            if getattr(module, "weight_g", None) is not None and "nownorm" in hps.lora_init_weights:
-                lora_init_weights_local = "normal"
-            # print("init {} {} {}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", device))
-            if getattr(module, "weight_g", None) is not None and "rmwnorm" in lora_init_weights:
-                module = remove_weight_norm(module)
-            module.init_parameters()
-        elif isinstance(module, torch.nn.ConvTranspose1d):
-            device = module.weight.device
-            dtype = module.weight.dtype
-            lora_r_new = min(lora_max, lora_r, max(((module.in_channels + module.out_channels)//2)//lora_mid_scale, lora_min))
-            lora_r_new = adjust_r(name, hps, lora_r_new)
-
-            lora_init_weights_local = lora_init_weights
-            if "noconvk" in hps.lora_init_weights:
-                lora_init_weights_local = "normal" if module.kernel_size[0]>1 else lora_init_weights
-            if getattr(module, "weight_g", None) is not None and "nownorm" in hps.lora_init_weights:
-                lora_init_weights_local = "normal"
-            # print("init {} {} {}".format(name, lora_init_weights_local.upper() if lora_init_weights_local!='normal' else "", device))
-            if getattr(module, "weight_g", None) is not None and "rmwnorm" in lora_init_weights:
-                module = remove_weight_norm(module)
-            module.init_parameters()
         elif isinstance(module, torch.nn.Conv2d):
             # print(f"{name}, {module} is not supported now.")
             pass

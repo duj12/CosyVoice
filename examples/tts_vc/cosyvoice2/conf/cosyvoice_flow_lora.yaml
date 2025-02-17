@@ -4,6 +4,12 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+# LoRA
+use_lora: True
+lora_r: 16
+lora_alpha: 16
+lora_init_weights: "normal"
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000
@@ -18,12 +24,14 @@ spk_audio_crop: 10
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
-use_pause_label: True  # whether use human labeled or MFA aligned pause labels
+use_pause_label: False  # whether use human labeled or MFA aligned pause labels
+
+need_text: False  # whether dataset need text
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
+llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -40,7 +48,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    use_frontend_prsd: True
+    use_frontend_prsd: False
     use_pause_label: !ref <use_pause_label>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
@@ -59,7 +67,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
         macaron_style: False
         use_dynamic_chunk: False
         use_dynamic_left_chunk: False
-        static_chunk_size: -1
+        static_chunk_size: 1
     llm: !new:cosyvoice.llm.llm.Qwen2Encoder
         pretrain_path: !ref <qwen_pretrain_path>
     sampling: !name:cosyvoice.utils.common.non_random_ras_sampling
@@ -117,6 +125,7 @@ flow: !new:cosyvoice.flow.flow.CausalMaskedDiffWithXvec
             num_mid_blocks: 12
             num_heads: 8
             act_fn: 'gelu'
+            use_dynamic_chunk: True
 
 hift: !new:cosyvoice.hifigan.generator.HiFTGenerator
     in_channels: 80
@@ -157,7 +166,7 @@ tokenize: !name:cosyvoice.dataset.processor_kaldidata.tokenize
     get_tokenizer: !ref <get_tokenizer>
     allowed_special: !ref <allowed_special>
 filter: !name:cosyvoice.dataset.processor_kaldidata.filter
-    max_length: 3600  # 100 frame per second
+    max_length: 4000  # 100 frame per second
     min_length: 0
     token_max_length: 512    # phoneme length
     token_min_length: 1
@@ -191,8 +200,6 @@ transcribe: !name:cosyvoice.dataset.processor_kaldidata.transcribe
     get_transcriber: !ref <get_transcriber>
 # dataset processor pipeline
 data_pipeline: [
-    !ref <tokenize>,
-    !ref <tokenize_pho>,
     !ref <filter>,
     !ref <resample>,
     !ref <compute_fbank>,
@@ -216,7 +223,7 @@ infer_data_pipeline: [
 train_conf:
     optim: adam
     optim_conf:
-        lr: 0.001 # change to 1e-5 during sft
+        lr: 0.0001 # change to 1e-5 during sft
     scheduler: warmuplr # warmuplr # change to constantlr during sft
     scheduler_conf:
         warmup_steps: 2500
@@ -224,10 +231,10 @@ train_conf:
     grad_clip: 5
     accum_grad: 2
     log_interval: 100
-    save_per_step: 10000
+    save_per_step: 5000
 
 # multiple train data dir
-train_data: [
+train_data0: [
     [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/LTTS/LTTS.vits.json",0,1 ],
@@ -416,29 +423,211 @@ train_data: [
 
 ]
 
-train_data_indexes0: [
+# multiple train data dir
+train_data: [
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/LTTS/LTTS.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_CN/MSTTS_CN.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_EN/MSTTS_EN.vits.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS_LibriTTS/ENTTS_LibriTTS.vits.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_KeSpeech/ASR_KeSpeech.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/Mandarin/Mandarin.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/Mandarin/Mandarin.1.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_MLS/ASR_MLS_sil.0.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ManEngMix/ManEngMix.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_MLS/ASR_MLS_sil.1.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/Conversation/Conversation.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_LibriHeavy/ASR_LibriHeavy_sil.0.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_Refine/ASR_Refine.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_LibriHeavy/ASR_LibriHeavy_sil.1.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_CN5k/ASR_CN5k.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_LibriHeavy/ASR_LibriHeavy_sil.2.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_CN5k/ASR_CN5k.1.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_LibriHeavy/ASR_LibriHeavy_sil.3.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_WenetSpeech/ASR_WenetSpeech.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20240122/20240122.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_GigaSpeech/ASR_GigaSpeech_sil.0.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240129/20240129.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_WenetSpeech/ASR_WenetSpeech.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240129/20240129.1.vits.json",0,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_GigaSpeech/ASR_GigaSpeech_sil.1.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240205/20240205.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_WenetSpeech/ASR_WenetSpeech.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240205/20240205.1.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_GigaSpeech/ASR_GigaSpeech_sil.2.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240205/20240205.2.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_WenetSpeech/ASR_WenetSpeech.3.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240205_1/20240205_1.0.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ASR_GigaSpeech/ASR_GigaSpeech_sil.3.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240205_1/20240205_1.1.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240212/20240212.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240212/20240212.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240212/20240212.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240212_1/20240212_1.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240212_1/20240212_1.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality1/HighQuality1.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality1/HighQuality1.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality1_en/HighQuality1_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality2/HighQuality2.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality2/HighQuality2.1.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality3_en/HighQuality3_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality4/HighQuality4.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality4_en/HighQuality4_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality5/HighQuality5.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality5_en/HighQuality5_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality6/HighQuality6.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality6_en/HighQuality6_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality7/HighQuality7.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality7_en/HighQuality7_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality8/HighQuality8.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality8_en/HighQuality8_en.0.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality8_en/HighQuality8_en.1.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality9/HighQuality9.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality9_en/HighQuality9_en.0.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality9/HighQuality9.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality9_en/HighQuality9_en.1.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality9_en/HighQuality9_en.2.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.2.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.3.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.4.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240219/20240219.5.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.3.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.4.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240226/20240226.5.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240304/20240304.0.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240304/20240304.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240304/20240304.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240304_en/20240304_en.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311/20240311.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311_en/20240311_en.0.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311/20240311.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311_en/20240311_en.1.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311/20240311.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240311_en/20240311_en.2.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240318/20240318.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240318_en/20240318_en.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.2.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.3.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.3.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.4.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.4.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.5.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.5.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.6.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.6.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10/HighQuality10.7.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.7.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.8.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality10_en/HighQuality10_en.9.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality11/HighQuality11.0.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality11_en/HighQuality11_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality11/HighQuality11.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/HighQuality11_en/HighQuality11_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12/HighQuality12.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12_en/HighQuality12_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12/HighQuality12.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12_en/HighQuality12_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12_en/HighQuality12_en.2.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality12_en/HighQuality12_en.3.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality13/HighQuality13.0.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality13_en/HighQuality13_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality13/HighQuality13.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality13_en/HighQuality13_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality13_en/HighQuality13_en.2.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14/HighQuality14.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14_en/HighQuality14_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14/HighQuality14.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14_en/HighQuality14_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14_en/HighQuality14_en.2.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality14_en/HighQuality14_en.3.vits.json",1,1 ],
+
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality15/HighQuality15.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality15_en/HighQuality15_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality15_en/HighQuality15_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/HighQuality15_en/HighQuality15_en.2.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.0.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1_en/MidQuality1_en.0.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.1.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1_en/MidQuality1_en.1.vits.json",1,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.2.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.3.vits.json",0,1 ],
+
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.4.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.5.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.6.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.7.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.8.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets2/Audio/TTS/VoiceClone/MidQuality1/MidQuality1.9.vits.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240930/20240930.nomfa.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20240930_en/20240930_en.nomfa.json",1,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20241007/20241007.nomfa.json",0,1 ],
+    [ "/mnt/nas/Datasets/Audio/TTS/VoiceClone2/20241007_en/20241007_en.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.0.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.1.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014_en/20241014_en.2.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241014/20241014.3.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.0.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.1.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.2.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16/HighQuality16.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.3.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.0.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.4.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.1.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/HighQuality16_en/HighQuality16_en.5.nomfa.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.2.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021_en/20241021_en.0.nomfa.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021/20241021.3.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone2/20241021_en/20241021_en.1.nomfa.json",1,1 ],
+
+]
+
+
+train_data_indexes: [
     [0,1,2,3,4,5]
 ]
 
-train_data_indexes: [
-    [16,17], [18,19], [20,21], [22,23], [24,25],
-    [156,157], [158,159], [160,161], [162,163], [164,165],
-    [166,167],
-    [86,87], [88,89], [90,91], [92,93], [94,95],
-    [26,27], [28,29], [30,31], [32,33], [34,35],
-    [96,97], [98,99], [100,101], [102,103], [104,105],
-    [36,37], [38,39], [40,41], [42,43], [44,45],
-    [106,107], [108,109], [110,111], [112,113], [114,115],
-    [46,47], [48,49], [50,51], [52,53], [54,55],
-    [116,117], [118,119], [120,121], [122,123], [124,125],
-    [56,57], [58,59], [60,61], [62,63], [64,65],
-    [126,127], [128,129], [130,131], [132,133], [134,135],
-    [66,67], [68,69], [70,71], [72,73], [74,75],
-    [136,137], [138,139], [140,141], [142,143], [144,145],
-    [76,77], [78,79], [80,81], [82,83], [84,85],
-    [146,147], [148,149], [150,151], [152,153], [154,155],
-    [6,7], [8,9], [10,11], [12,13], [14,15],
-
+# HighQuality Data
+train_data_indexes1: [
+    [41,42], [43,44], [45,46], [47,48], [49,50],
+    [51,52], [53,54], [55,56], [57,58], [59,60],
+    [61,62], [87,88], [89,90], [91,92], [93,94],
+    [95,96], [97,98], [99,100], [101,102], [103,104],
+    [105,106], [107,108], [109,110], [111,112], [113,114],
+    [115,116], [117,118], [119,120], [121,122], [123,124],
+    [125,126], [127,128], [129,153], [154,155], [156,157],
+    [158,159], [161,163]
 ]
 
 cv_data: [
