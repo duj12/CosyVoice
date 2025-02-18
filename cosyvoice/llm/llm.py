@@ -528,12 +528,12 @@ class TransformerLM_Phoneme(torch.nn.Module):
             audio: (B, T, N) or (B, T)
             audio_lengths: (B,)
         """
-        text_token = batch['text_token'].to(device)
+        text_token = batch['pho_token'].to(device)
         # text_tone = batch['text_tone'].to(device)
         # text_lang = batch['text_lang'].to(device)
         # text_prsd = batch['text_prsd'].to(device)
 
-        text_token_len = batch['text_token_len'].to(device)
+        text_token_len = batch['pho_token_len'].to(device)
         speech_token = batch['speech_token'].to(device)
         speech_token_len = batch['speech_token_len'].to(device)
         embedding = batch['embedding'].to(device)

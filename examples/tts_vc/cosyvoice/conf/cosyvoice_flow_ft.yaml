@@ -86,6 +86,7 @@ flow: !new:cosyvoice.flow.flow.MaskedDiffWithXvec
         pos_enc_layer_type: 'rel_pos_espnet'
         selfattention_layer_type: 'rel_selfattn'
         input_size: 512
+        use_dynamic_chunk: True
         use_cnn_module: False
         macaron_style: False
     length_regulator: !new:cosyvoice.flow.length_regulator.InterpolateRegulator
@@ -113,6 +114,7 @@ flow: !new:cosyvoice.flow.flow.MaskedDiffWithXvec
             num_mid_blocks: 12
             num_heads: 8
             act_fn: 'gelu'
+            use_dynamic_chunk: True
 
     mel_feat_conf:
 
