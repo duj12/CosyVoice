@@ -13,16 +13,15 @@ dist_backend="nccl"
 num_workers=8
 prefetch=100
 train_engine=torch_ddp
-exp_name=llm_pho_31w_tts
-exp_conf=cosyvoice_pho_tts2
-portnum=2103
+exp_name=llm_pho_31w1
+exp_conf=cosyvoice_pho1
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
   if [ $train_engine == 'deepspeed' ]; then
     echo "Notice deepspeed has its own optimizer config. Modify conf/ds_stage2.json if necessary"
   fi
-
+portnum=2100
 # --rdzv_id=$job_id --rdzv_backend="c10d" --rdzv_endpoint="localhost:0" \
 run_command() {
   for model in $exp_name; do

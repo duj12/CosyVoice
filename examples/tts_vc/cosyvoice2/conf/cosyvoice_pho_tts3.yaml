@@ -20,12 +20,10 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: False  # whether use human labeled or MFA aligned pause labels
 
-need_text: False  # whether dataset need text
-
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme
+llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -61,7 +59,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme
         macaron_style: False
         use_dynamic_chunk: False
         use_dynamic_left_chunk: False
-        static_chunk_size: 1
+        static_chunk_size: -1
     llm: !new:cosyvoice.llm.llm.Qwen2Encoder
         pretrain_path: !ref <qwen_pretrain_path>
     sampling: !name:cosyvoice.utils.common.non_random_ras_sampling
@@ -119,7 +117,6 @@ flow: !new:cosyvoice.flow.flow.CausalMaskedDiffWithXvec
             num_mid_blocks: 12
             num_heads: 8
             act_fn: 'gelu'
-            use_dynamic_chunk: True
 
 hift: !new:cosyvoice.hifigan.generator.HiFTGenerator
     in_channels: 80
@@ -194,6 +191,8 @@ transcribe: !name:cosyvoice.dataset.processor_kaldidata.transcribe
     get_transcriber: !ref <get_transcriber>
 # dataset processor pipeline
 data_pipeline: [
+    !ref <tokenize>,
+    !ref <tokenize_pho>,
     !ref <filter>,
     !ref <resample>,
     !ref <compute_fbank>,
@@ -217,7 +216,7 @@ infer_data_pipeline: [
 train_conf:
     optim: adam
     optim_conf:
-        lr: 0.0001 # change to 1e-5 during sft
+        lr: 0.001 # change to 1e-5 during sft
     scheduler: warmuplr # warmuplr # change to constantlr during sft
     scheduler_conf:
         warmup_steps: 2500
@@ -422,14 +421,24 @@ train_data_indexes: [
 ]
 
 train_data_indexes1: [
-    [41,42], [43,44], [45,46], [47,48], [49,50],
-    [51,52], [53,54], [55,56], [57,58], [59,60],
-    [61,62], [87,88], [89,90], [91,92], [93,94],
-    [95,96], [97,98], [99,100], [101,102], [103,104],
-    [105,106], [107,108], [109,110], [111,112], [113,114],
-    [115,116], [117,118], [119,120], [121,122], [123,124],
-    [125,126], [127,128], [129,153], [154,155], [156,157],
-    [158,159], [161,163]
+    [16,17], [18,19], [20,21], [22,23], [24,25],
+    [156,157], [158,159], [160,161], [162,163], [164,165],
+    [166,167],
+    [86,87], [88,89], [90,91], [92,93], [94,95],
+    [26,27], [28,29], [30,31], [32,33], [34,35],
+    [96,97], [98,99], [100,101], [102,103], [104,105],
+    [36,37], [38,39], [40,41], [42,43], [44,45],
+    [106,107], [108,109], [110,111], [112,113], [114,115],
+    [46,47], [48,49], [50,51], [52,53], [54,55],
+    [116,117], [118,119], [120,121], [122,123], [124,125],
+    [56,57], [58,59], [60,61], [62,63], [64,65],
+    [126,127], [128,129], [130,131], [132,133], [134,135],
+    [66,67], [68,69], [70,71], [72,73], [74,75],
+    [136,137], [138,139], [140,141], [142,143], [144,145],
+    [76,77], [78,79], [80,81], [82,83], [84,85],
+    [146,147], [148,149], [150,151], [152,153], [154,155],
+    [6,7], [8,9], [10,11], [12,13], [14,15],
+
 ]
 
 cv_data: [

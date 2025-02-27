@@ -13,9 +13,9 @@ dist_backend="nccl"
 num_workers=8
 prefetch=100
 train_engine=torch_ddp
-exp_name=llm_pho_31w_tts
-exp_conf=cosyvoice_pho_tts2
-portnum=2103
+exp_name=llm_pho_31w_tts1
+exp_conf=cosyvoice_pho_tts3
+portnum=2104
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then

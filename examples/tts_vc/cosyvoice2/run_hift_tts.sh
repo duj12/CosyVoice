@@ -10,12 +10,12 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
-num_workers=8
+num_workers=4
 prefetch=100
 train_engine=torch_ddp
-exp_name=llm_pho_31w_tts
-exp_conf=cosyvoice_pho_tts2
-portnum=2103
+exp_name=hift_tts
+exp_conf=cosyvoice_hift_tts
+portnum=2301
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
@@ -33,7 +33,7 @@ run_command() {
       --timeout  60    \
       --train_engine $train_engine \
       --config conf/$exp_conf.yaml \
-      --model llm \
+      --model hifigan \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/$model \
       --tensorboard_dir `pwd`/tensorboard/$model \
