@@ -95,8 +95,19 @@ def replace_specific_layer_4lora(model, hps):
     lora_dropout = 0.01
     lora_init_weights = hps.get("lora_init_weights", "normal")
 
+    lora_skip_modules = hps.get("lora_skip_modules", ['llm'])
+
     # Recursively visit all modules and submodules
     for name, module in model.named_modules():
+        need_lora = True
+        for skip_module in lora_skip_modules:
+            if name.startswith(skip_module):
+                logger.info(f"LoRA skip name {name}")
+                need_lora = False
+                break
+        if not need_lora:
+            continue
+
         # Check if the module is an instance of the specified layers
         if isinstance(module, torch.nn.Linear):
             out_features, in_features = module.weight.shape

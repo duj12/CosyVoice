@@ -233,7 +233,7 @@ train_conf:
     grad_clip: 5
     accum_grad: 2
     log_interval: 100
-    save_per_step: 5000
+    save_per_step: 2000
 
 # multiple train data dir
 train_data0: [
@@ -452,6 +452,8 @@ train_data_indexes1: [
 
 
 train_data: [
+    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.ID36+37.10min.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone3/MengNiu/MengNiu.vits.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC1/ENTTS_VC1.ID12.json",1,1 ],
@@ -459,7 +461,7 @@ train_data: [
 ]
 
 train_data_indexes: [
-    [0,1,2,3]
+    [0,1,2,3,4,5]
 ]
 
 cv_data: [
