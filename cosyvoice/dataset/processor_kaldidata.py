@@ -462,12 +462,14 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
         order = torch.argsort(speech_feat_len, descending=True)
 
         utts = [sample[i]['utt'] for i in order]
+        spks = [sample[i]['spk'] for i in order]
         speech = [sample[i]['speech'].squeeze(dim=0) for i in order]
         speech_len = torch.tensor([i.size(0) for i in speech], dtype=torch.int32)
         speech = pad_sequence(speech, batch_first=True, padding_value=0)
 
         batch = {
             "utts": utts,
+            "spks": spks,
             "speech": speech,
             "speech_len": speech_len,
         }

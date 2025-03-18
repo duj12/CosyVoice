@@ -58,6 +58,15 @@ def lora_state_dict(model: nn.Module, bias: str = 'none') -> Dict[str, torch.Ten
         raise NotImplementedError
 
 def getModelSize_lora(model, lora_bias="none"):
+    all_size = 0
+    non_lora_size = 0
+    for m, m_tensor in model.state_dict().items():
+        all_size += m_tensor.nelement() * m_tensor.element_size() / 1024 / 1024
+        if 'lora' not in m:
+            non_lora_size += m_tensor.nelement() * m_tensor.element_size() / 1024 / 1024
+    logger.info(f"模型总大小为：{all_size:.3f}MB")
+    logger.info(f"除lora外模型参数大小为：{non_lora_size:.3f}MB")
+
     param_size_dict = {}
     for name, module in model.named_modules():
         if not isinstance(module, LoRALayer):
@@ -81,12 +90,13 @@ def getModelSize_lora(model, lora_bias="none"):
     buffer_size = 0
     for buffer in model.buffers():
         buffer_size += buffer.nelement() * buffer.element_size()
+    logger.info(f"模型Buffer总大小为：{(buffer_size/1024/1024):.3f}MB")
 
-    all_size = 0
+    lora_size = 0
     for key, param_size in param_size_dict.items():
         logger.info(f"lora节点{key}大小为：{param_size:.3f}MB")
-        all_size += param_size
-    logger.info(f"lora模型总大小为：{all_size:.3f}MB")
+        lora_size += param_size
+    logger.info(f"lora模型总大小为：{lora_size:.3f}MB")
     return
 
 def replace_specific_layer_4lora(model, hps):
@@ -95,7 +105,7 @@ def replace_specific_layer_4lora(model, hps):
     lora_dropout = 0.01
     lora_init_weights = hps.get("lora_init_weights", "normal")
 
-    lora_skip_modules = hps.get("lora_skip_modules", ['llm'])
+    lora_skip_modules = hps.get("lora_skip_modules", [])
 
     # Recursively visit all modules and submodules
     for name, module in model.named_modules():

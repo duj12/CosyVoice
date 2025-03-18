@@ -30,6 +30,7 @@ import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
+from torch.nn.utils.rnn import pad_sequence
 
 from deepspeed.runtime.zero.stage_1_and_2 import estimate_zero2_model_states_mem_needs_all_live
 
@@ -481,7 +482,33 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
     batch_dict['speech_token'] = speech_code
     batch_dict['speech_token_len'] = speech_code_len
 
+    use_offline_spkemb = configs.get('use_offline_spkemb', False)
+    if use_offline_spkemb:  # 使用离线已经提取好的说话人向量
+        if 'speaker_vectors' not in configs:
+            spkemb = torch.load(configs['offline_speaker_vec'],
+                                map_location='cuda')
+            configs['speaker_vectors'] = spkemb
+    else:
+        configs['speaker_vectors'] = {}
+
     if spkemb_model is not None:
+        speaker_vec_list = []
+        spker_list = batch_dict['spks']
+        wave_list = []
+        wave_len_list = []
+        # 先把有离线说话人向量的数据拿出来
+        for i, spk in enumerate(spker_list):
+            if spk in configs['speaker_vectors']:
+                speaker_vec_list.append(configs['speaker_vectors'][spk])
+            else:
+                speaker_vec_list.append(None)
+                wave_list.append(wave[i])
+                wave_len_list.append(wave_len[i])
+
+        # 处理没有说话人向量的，在线提取
+        wave = torch.stack(wave_list)
+        wave_len = torch.stack(wave_len_list)
+
         spk_audio_crop = configs.get('spk_audio_crop', 0)
         if spk_audio_crop:
             wave_len = wave_len.to('cpu')
@@ -502,7 +529,6 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
 
                 extracted_waves.append(extracted_wave)
 
-            from torch.nn.utils.rnn import pad_sequence
             spk_wave = pad_sequence(extracted_waves, batch_first=True, padding_value=0)
             spk_wave = spk_wave.to(codec_model.device)
             spk_wave_len = torch.tensor(spk_wave_len).to(codec_model.device)
@@ -513,6 +539,15 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
         with torch.no_grad():
             # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
             speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
-        batch_dict['embedding'] = speaker_embs
+
+        idx = 0
+        for i, spk in enumerate(spker_list):
+            if spk in configs['speaker_vectors']:
+                pass
+            else:
+                speaker_vec_list[i] = speaker_embs[idx]
+                idx += 1
+
+        batch_dict['embedding'] = torch.stack(speaker_vec_list)
 
     return batch_dict

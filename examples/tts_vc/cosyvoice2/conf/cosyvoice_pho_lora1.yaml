@@ -10,6 +10,8 @@ lora_r: 16
 lora_alpha: 16
 lora_init_weights: "normal"
 lora_skip_modules: []  # ["llm", "src_attention", "speech_embedding"]
+use_offline_spkemb: True
+offline_speaker_vec: "../../../pretrained_models/fewshot_spk_vec.pt"
 
 # fixed params
 codec_type: "s3tokenizer_v2"

@@ -23,7 +23,7 @@ import os
 import torch
 import torch.distributed as dist
 import deepspeed
-
+import cosyvoice.loralib as lora
 from hyperpyyaml import load_hyperpyyaml
 from torch.distributed.elastic.multiprocessing.errors import record
 from cosyvoice.utils.executor_online_codec import Executor
@@ -120,10 +120,9 @@ def main():
     # add additional LoRA parameters
     use_lora = configs.get("use_lora", False)
     if use_lora:
-        import cosyvoice.loralib as lora
         model = lora.replace_specific_layer_4lora(model, configs)
         lora.mark_only_lora_as_trainable(model)
-        lora.getModelSize_lora(model)
+    lora.getModelSize_lora(model)
 
     start_epoch = 0
     resume_info = None
