@@ -23,7 +23,7 @@ use_pause_label: False  # whether use human labeled or MFA aligned pause labels
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src
+llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -40,7 +40,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    use_frontend_prsd: False
+    use_frontend_prsd: !ref <use_pause_label>
     use_pause_label: !ref <use_pause_label>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
@@ -159,7 +159,7 @@ tokenize: !name:cosyvoice.dataset.processor_kaldidata.tokenize
 filter: !name:cosyvoice.dataset.processor_kaldidata.filter
     max_length: 4000  # 100 frame per second
     min_length: 0
-    token_max_length: 512    # phoneme length
+    token_max_length: 480    # phoneme length
     token_min_length: 1
 resample: !name:cosyvoice.dataset.processor_kaldidata.resample
     resample_rate: !ref <sample_rate>

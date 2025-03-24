@@ -20,6 +20,9 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: True  # whether use human labeled or MFA aligned pause labels
 
+use_offline_spkemb: True
+offline_speaker_vec: "../../../pretrained_models/fewshot_tts_spk_vec.pt"
+
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
@@ -40,7 +43,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    use_frontend_prsd: True
+    use_frontend_prsd: !ref <use_pause_label>
     use_pause_label: !ref <use_pause_label>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>

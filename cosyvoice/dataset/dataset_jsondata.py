@@ -228,8 +228,10 @@ def Dataset(json_file,
     utt2spk = {}
     utt2text = {}
     valid_utt_list = []
+
     def add_one_data(json_file):
         logging.info(f"Loading data: {json_file}, short data sample times {rich_sample_short_utt}")
+        duplicated_utt = 0
         if isinstance(json_file, list):
             json_file, language, repeat_time = json_file
         with open(json_file, 'r', encoding='utf8') as fin:
@@ -246,10 +248,18 @@ def Dataset(json_file,
             for fname, dur, sequence in file_list:
                 pho = sequence['text']
                 wav_path = os.path.join(wave_dir, speaker_folder, '{}.wav'.format(fname))
-                utt = f"{fname}"
+                utt = f"{data_name}-{fname}"
+                speaker = f"{data_name}-{sid}"
+                if utt in utt2wav:
+                    # 同一个数据集里面有同名的音频，他们文本可能不同，处理数据时text文件只保留了其中一个的文本，直接删掉这些重名数据好了
+                    # logging.warning(f"{utt} is duplicated. remove it from train data.")
+                    del utt2wav[utt], utt2pho[utt], utt2spk[utt]
+                    duplicated_utt += 1
+                    continue
+
                 utt2wav[utt] = wav_path
                 utt2pho[utt] = pho
-                utt2spk[utt] = sid
+                utt2spk[utt] = speaker
                 valid_utt_list.append(utt)
                 if rich_sample_short_utt>0 and len(pho) < 10:  # 对音素序列长度低于10的音频富采样
                     valid_utt_list.extend([utt]*rich_sample_short_utt)
@@ -265,12 +275,13 @@ def Dataset(json_file,
                 if len(line)!=2:
                     continue
                 utt, text = line[0], line[1]
+                utt = f"{data_name}-{utt}"
                 if utt not in utt2pho:
                     continue
                 utt2text[utt] = text
 
         del dataset_info
-        logging.info(f"Current utts: {len(utt2wav.keys())}. Actual samples {len(valid_utt_list)}")
+        logging.info(f"Current utts: {len(utt2wav.keys())}. total samples: {len(valid_utt_list)}, duplicated:{duplicated_utt}")
 
     if isinstance(json_file, list):
         for sub_data in json_file:
