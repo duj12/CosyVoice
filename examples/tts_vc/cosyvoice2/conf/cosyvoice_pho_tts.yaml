@@ -4,6 +4,8 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+dtype: 'bf16'
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000

@@ -197,6 +197,8 @@ def main():
     executor.configs = configs
     # Init scaler, used for pytorch amp mixed precision training
     scaler = torch.cuda.amp.GradScaler() if args.use_amp else None
+    if scaler is not None:
+        logging.info(f"use cuda amp training, dtype: {configs.get('dtype', 'fp32')}.")
 
     # Start training loop
     for epoch in range(start_epoch, info_dict['max_epoch']):

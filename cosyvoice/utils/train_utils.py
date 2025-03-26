@@ -78,7 +78,10 @@ def init_dataset_and_dataloader(args, configs, gan):
 
 def check_modify_and_save_config(args, configs):
     if args.train_engine == "torch_ddp":
-        configs['train_conf']["dtype"] = 'fp32'
+        if configs.get('dtype', None):
+            configs['train_conf']["dtype"] = configs['dtype']
+        else:
+            configs['train_conf']["dtype"] = 'fp32'
     else:
         with open(args.deepspeed_config, 'r') as fin:
             ds_configs = json.load(fin)
@@ -260,7 +263,7 @@ def batch_forward(model, batch, scaler, info_dict):
         dtype = torch.float32
 
     if info_dict['train_engine'] == 'torch_ddp':
-        autocast = torch.cuda.amp.autocast(enabled=scaler is not None)
+        autocast = torch.cuda.amp.autocast(enabled=scaler is not None, dtype=dtype, cache_enabled=True)
     else:
         autocast = torch.cuda.amp.autocast(enabled=True, dtype=dtype, cache_enabled=False)
 
