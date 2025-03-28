@@ -4,6 +4,8 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+dtype: 'bf16'
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000
@@ -20,8 +22,6 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: True  # whether use human labeled or MFA aligned pause labels
 
-use_offline_spkemb: True
-offline_speaker_vec: "../../../pretrained_models/fewshot_tts_spk_vec.pt"
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.

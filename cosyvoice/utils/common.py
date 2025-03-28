@@ -123,7 +123,7 @@ def non_random_ras_sampling(weighted_scores, decoded_tokens, sampling,
     return top_ids
 
 
-def nucleus_sampling(weighted_scores, top_p=0.8, top_k=25):
+def nucleus_sampling(weighted_scores, decoded_tokens=None, sampling=None, top_p=0.8, top_k=25):
     prob, indices = [], []
     cum_prob = 0.0
     sorted_value, sorted_idx = weighted_scores.softmax(dim=0).sort(descending=True, stable=True)

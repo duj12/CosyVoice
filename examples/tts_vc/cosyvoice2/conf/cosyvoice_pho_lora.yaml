@@ -430,13 +430,17 @@ train_data: [
     [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_CN/MSTTS_CN.vits.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_EN/MSTTS_EN.vits.json",1,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS_LibriTTS/ENTTS_LibriTTS.vits.json",1,1 ],
+
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC1/ENTTS_VC1.ID12.json",1,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC3/ENTTS_VC3.ID88.json",1,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.ID36+37.10min.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone3/MengNiu/MengNiu.vits.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC1/ENTTS_VC1.ID12.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC3/ENTTS_VC3.ID88.json",1,1 ]
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/DongwuZQ/DongwuZQ.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/GuangdongTiyu/GuangdongTiyu.vits.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/XmovLJ/XmovLJ.vits.json",0,1 ]
 ]
 train_data_indexes: [
-    [0,1,6,7,8,9]
+    [0,1,9,10,11,12]
 ]
 
 train_data_indexes1: [

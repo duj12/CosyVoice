@@ -34,8 +34,7 @@ from cosyvoice.utils.train_utils import (
     get_latest_ckpt, get_resume_params,
     init_json_dataset, init_codec_and_embed_model
 )
-torch.backends.cuda.matmul.allow_tf32 = True  # speedup large matrix multiply
-torch.backends.cudnn.allow_tf32 = True  # speedup conv layers
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='training your network')
@@ -199,6 +198,11 @@ def main():
     scaler = torch.cuda.amp.GradScaler() if args.use_amp else None
     if scaler is not None:
         logging.info(f"use cuda amp training, dtype: {configs.get('dtype', 'fp32')}.")
+    else:
+        logging.info(f"use cuda.matmul.allow_tf32, dtype: tf32.")
+        torch.backends.cuda.matmul.allow_tf32 = True  # speedup large matrix multiply
+        torch.backends.cudnn.allow_tf32 = True  # speedup conv layers
+
 
     # Start training loop
     for epoch in range(start_epoch, info_dict['max_epoch']):

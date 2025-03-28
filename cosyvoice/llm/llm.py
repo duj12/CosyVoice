@@ -1952,7 +1952,7 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             spk_embed_dim: int = 512,
             use_frontend_prsd: bool = False,
             use_pause_label: bool = False,
-            qwen_sglang_path: str = None,
+            qwen_sglang_config: dict = None,
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -2013,7 +2013,7 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
         self.sampling = sampling
 
         # 5. use_sglang
-        self.use_sglang = (qwen_sglang_path is not None)
+        self.use_sglang = (qwen_sglang_config is not None)
         if self.use_sglang:
             # self.llm = None
             from sglang.test.test_utils import (
@@ -2023,8 +2023,10 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             )
 
             # "/data/megastore/SHARE/SHARE_checkpoints_lamtts_svn/acoustics/qwen/forsglang"
-            model_path = qwen_sglang_path
-            self.base_url = DEFAULT_URL_FOR_TEST
+            model_path = qwen_sglang_config['model_path']
+            self.base_url = qwen_sglang_config['base_url']
+            mem_fraction = qwen_sglang_config['mem_ratio']
+
             self.sgprocess = popen_launch_server(
                 model_path,
                 self.base_url,
@@ -2034,7 +2036,7 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
                     "--skip-tokenizer-init",  ### 开启直接返回token
                     "--random-seed=1234",  ### 做实验debug，可去掉
                     "--base-gpu-id=0",  ### 指定gpu id，可去掉
-                    "--mem-fraction-static=0.6",
+                    f"--mem-fraction-static={mem_fraction}",
                     ### 控制kvcache占用显存比例，去掉self.llm后可以调大
                     "--dtype=bfloat16",
                     ### float32跑不通，必须downscale成bfloat16，效果区别不大

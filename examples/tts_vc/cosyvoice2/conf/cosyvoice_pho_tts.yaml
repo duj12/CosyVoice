@@ -4,7 +4,6 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
-dtype: 'bf16'
 
 # fixed params
 codec_type: "s3tokenizer_v2"
@@ -419,7 +418,10 @@ train_data: [
 ]
 
 train_data_indexes: [
-    [0,1,2,3,4,5]
+    [0,1,2,3,4,5],
+    [6,7], [8,9], [10,11],
+    [12,13], [14,15], [16,17], [18,19],
+    [20,22], [24,26], [28,30], [32,34]
 ]
 
 train_data_indexes1: [
