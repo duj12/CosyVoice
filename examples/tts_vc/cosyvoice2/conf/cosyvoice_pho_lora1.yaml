@@ -11,7 +11,7 @@ lora_alpha: 16
 lora_init_weights: "normal"
 lora_skip_modules: []  # ["llm", "src_attention", "speech_embedding"]
 use_offline_spkemb: True
-offline_speaker_vec: "../../../pretrained_models/fewshot_spk_vec.pt"
+offline_speaker_vec: "../../../pretrained_models/TTS_spk_vec.pt"
 
 # fixed params
 codec_type: "s3tokenizer_v2"
@@ -438,7 +438,7 @@ train_data: [
     [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC3/ENTTS_VC3.ID88.json",1,1 ]
 ]
 train_data_indexes: [
-    [0,1,6,7,8,9]
+    [0,1,2]
 ]
 
 train_data_indexes1: [

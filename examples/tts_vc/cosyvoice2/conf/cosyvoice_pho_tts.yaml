@@ -4,6 +4,7 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+dtype: 'bf16'
 
 # fixed params
 codec_type: "s3tokenizer_v2"
@@ -158,9 +159,9 @@ tokenize: !name:cosyvoice.dataset.processor_kaldidata.tokenize
     get_tokenizer: !ref <get_tokenizer>
     allowed_special: !ref <allowed_special>
 filter: !name:cosyvoice.dataset.processor_kaldidata.filter
-    max_length: 4000  # 100 frame per second
+    max_length: 3600  # 100 frame per second
     min_length: 0
-    token_max_length: 512    # phoneme length
+    token_max_length: 480    # phoneme length
     token_min_length: 1
 resample: !name:cosyvoice.dataset.processor_kaldidata.resample
     resample_rate: !ref <sample_rate>
@@ -225,7 +226,7 @@ train_conf:
     grad_clip: 5
     accum_grad: 2
     log_interval: 100
-    save_per_step: 10000
+    save_per_step: 5000
 
 # multiple train data dir
 train_data: [
@@ -418,10 +419,10 @@ train_data: [
 ]
 
 train_data_indexes: [
-    [0,1,2,3,4,5],
-    [6,7], [8,9], [10,11],
-    [12,13], [14,15], [16,17], [18,19],
-    [20,22], [24,26], [28,30], [32,34]
+    [0,1,2,3,4,5]
+#    [6,7], [8,9], [10,11],
+#    [12,13], [14,15], [16,17], [18,19],
+#    [20,22], [24,26], [28,30], [32,34]
 ]
 
 train_data_indexes1: [

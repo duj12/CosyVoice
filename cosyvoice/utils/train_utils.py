@@ -508,40 +508,41 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
                 wave_list.append(wave[i])
                 wave_len_list.append(wave_len[i])
 
-        # 处理没有说话人向量的，在线提取
-        wave = torch.stack(wave_list)
-        wave_len = torch.stack(wave_len_list)
+        if len(wave_list) > 0:
+            # 处理没有说话人向量的，在线提取
+            wave = torch.stack(wave_list)
+            wave_len = torch.stack(wave_len_list)
 
-        spk_audio_crop = configs.get('spk_audio_crop', 0)
-        if spk_audio_crop:
-            wave_len = wave_len.to('cpu')
-            crop_length = spk_audio_crop * configs['sample_rate']
-            extracted_waves = []
-            spk_wave_len = []
-            for b, true_length in enumerate(wave_len):
-                if true_length < crop_length:  # 需要拼接至crop_length
-                    repeat_times = (crop_length + wave_len[b] - 1) // wave_len[b]
-                    extracted_wave = torch.cat([wave[b][:true_length]] * repeat_times)
-                    extracted_wave = extracted_wave[:crop_length]
-                    spk_wave_len.append(crop_length)
-                else:
-                    random_length = torch.randint(crop_length, true_length + 1, (1,)).item()
-                    start_idx = torch.randint(0, true_length-random_length+1, (1,)).item()
-                    extracted_wave = wave[b, start_idx:start_idx + random_length]
-                    spk_wave_len.append(random_length)
+            spk_audio_crop = configs.get('spk_audio_crop', 0)
+            if spk_audio_crop:
+                wave_len = wave_len.to('cpu')
+                crop_length = spk_audio_crop * configs['sample_rate']
+                extracted_waves = []
+                spk_wave_len = []
+                for b, true_length in enumerate(wave_len):
+                    if true_length < crop_length:  # 需要拼接至crop_length
+                        repeat_times = (crop_length + wave_len[b] - 1) // wave_len[b]
+                        extracted_wave = torch.cat([wave[b][:true_length]] * repeat_times)
+                        extracted_wave = extracted_wave[:crop_length]
+                        spk_wave_len.append(crop_length)
+                    else:
+                        random_length = torch.randint(crop_length, true_length + 1, (1,)).item()
+                        start_idx = torch.randint(0, true_length-random_length+1, (1,)).item()
+                        extracted_wave = wave[b, start_idx:start_idx + random_length]
+                        spk_wave_len.append(random_length)
 
-                extracted_waves.append(extracted_wave)
+                    extracted_waves.append(extracted_wave)
 
-            spk_wave = pad_sequence(extracted_waves, batch_first=True, padding_value=0)
-            spk_wave = spk_wave.to(codec_model.device)
-            spk_wave_len = torch.tensor(spk_wave_len).to(codec_model.device)
-        else:
-            spk_wave = wave
-            spk_wave_len = wave_len
+                spk_wave = pad_sequence(extracted_waves, batch_first=True, padding_value=0)
+                spk_wave = spk_wave.to(codec_model.device)
+                spk_wave_len = torch.tensor(spk_wave_len).to(codec_model.device)
+            else:
+                spk_wave = wave
+                spk_wave_len = wave_len
 
-        with torch.no_grad():
-            # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
-            speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
+            with torch.no_grad():
+                # the speaker_embed_model use 24k wave tensor input, if not 24k, resample is needed
+                speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
 
         idx = 0
         for i, spk in enumerate(spker_list):

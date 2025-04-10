@@ -402,14 +402,31 @@ fs_ref_audios6 = [
 ]
 
 fs_ref_audios7 = [
-    ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNF15_GS_0004.wav", 1000, 'ID_37'),
-    ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNM15_YJ_0006.wav", 1001, 'ID_36'),
-    ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNVCF_MNDZ_0005.wav", 1002, 'mengniu_0'),
-    ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/ENVCF_ID88_FX_reference.wav", 0, 'ENVCF_ID88_FX'),
-    ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/ENVCM_ID12_ZB_reference.wav", 1, 'ENVCM_ID12_ZB'),
+    # ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNF15_GS_0004.wav", 1000, 'ID_37'),
+    # ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNM15_YJ_0006.wav", 1001, 'ID_36'),
+    # ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/CNVCF_MNDZ_0005.wav", 1002, 'mengniu_0'),
+    # ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/ENVCF_ID88_FX_reference.wav", 0, 'ENVCF_ID88_FX'),
+    # ("/data/megastore/SHARE/TTS/ref_audios/zeroshot/ENVCM_ID12_ZB_reference.wav", 1, 'ENVCM_ID12_ZB'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID12_CNF04_ZSFX_0230.wav", 12, 'NTTS-ID_12'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID15_CNM05_YJ_0367.wav", 15, 'NTTS-ID_15'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID19_CNF06_GRFX_0315.wav", 19, 'NTTS-ID_19'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID22_CNM08_ZSFX_0114.wav", 22, 'NTTS-ID_22'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID27_CNF10_GRFX_0403.wav", 27, 'NTTS-ID_27'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID33_CNF11_LS_0442.wav", 33, 'NTTS-ID_33'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID34_CNM14_PB_0070.wav", 34, 'NTTS-ID_34'),
+    ("/data/megastore/SHARE/TTS/ref_audios/NTTS/ID35_CNM13_GS_0750.wav", 35, 'NTTS-ID_35'),
 
+    ("/data/megastore/SHARE/TTS/ref_audios/LTTS/ID3_ZBM03_14_133.wav", 103, 'LTTS-ID_3'),
+    ("/data/megastore/SHARE/TTS/ref_audios/LTTS/ID13_ZBF08_09_1253.wav", 113, 'LTTS-ID_13'),
+
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID0_USF01_YJ_0115.wav", 200, 'ENTTS-ID_0'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID2_USF02_FT_0342.wav", 202, 'ENTTS-ID_2'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID4_USM03_YJ_0150.wav", 204, 'ENTTS-ID_4'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID7_USF04_LS_0741.wav", 207, 'ENTTS-ID_7'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID10_USF05_GRFX_0172.wav", 210, 'ENTTS-ID_10'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID12_USF07_GRFX_0384.wav", 212, 'ENTTS-ID_12'),
+    ("/data/megastore/SHARE/TTS/ref_audios/ENTTS/ID13_USM09_LS_0412.wav", 213, 'ENTTS-ID_13'),
 ]
-
 
 
 def init_model(config, ckpt_llm, ckpt_flow, ckpt_se, ckpt_codec,
@@ -527,7 +544,7 @@ def get_spkemb2(wav_path, spkemb_model):
 
     # 将wave切分成片段，然后分别提取音色特征之后再平均
     total_length = len(wave)
-    chunk_length = 60 * sample_rate
+    chunk_length = 10 * sample_rate
 
     if total_length < chunk_length:
         repeat_times = (chunk_length + total_length - 1) // total_length
@@ -574,14 +591,16 @@ if __name__ == '__main__':
     flow_base_model_path = "/data/megastore/Projects/DuJing/code/lam_tts/tts/checkpoints/LAM-VC/Flow/flow_v2.pt"
     llm_model_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/llm_pho_31w_tts_lora_all/epoch_52_step_370000.pt"
     llm_model_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/llm_pho_31w_tts_lora_all1/epoch_53_step_370000.pt"
+    llm_model_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/llm_pho_31w1_tts0_lora1/epoch_109_step_220000.pt"
     flow_model_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/flow_15w_tts_lora/epoch_8_step_20000.pt"
+    flow_model_path = flow_base_model_path
 
     check_base_lora_param(llm_base_model_path, llm_model_path)
     check_base_lora_param(flow_base_model_path, flow_model_path)
 
     se_model_path = "/data/megastore/Projects/DuJing/code/lam_tts/tts/checkpoints/LAM-VC/SpeakerEncoder/speaker_encoder_v2.pt"
     codec_model_path = "/data/megastore/Projects/DuJing/code/lam_tts/tts/checkpoints/LAM-VC/s3tokenizer/"
-    offline_vec_path = "/data/megastore/SHARE/TTS/pretrained_models/fewshot_spk_vec.pt"
+    offline_vec_path = "/data/megastore/SHARE/TTS/pretrained_models/TTS_spk_vec.pt"
 
     llm_save_path = "/data/megastore/Projects/DuJing/code/lam_tts/tts/checkpoints/LAM-VC/LLM/llm_v2_lora_0.pt"
     flow_save_path = "/data/megastore/Projects/DuJing/code/lam_tts/tts/checkpoints/LAM-VC/Flow/flow_v2_lora_0.pt"
@@ -612,6 +631,7 @@ if __name__ == '__main__':
 
         flow_prompt_token, prompt_len = wav2token(flow_audio, codec_model)
         flow_prompt_feat = wav2melfeat(flow_audio, mel_fn)
+        flow_spk_vec = get_spkemb2(ref_path, spkemb_model)  # B D
 
         if use_offline_spkemb:
             logger.info(f"use the offline vector of speaker {spk_name}")
@@ -625,7 +645,7 @@ if __name__ == '__main__':
             'llm_prompt_token': None,
             'flow_prompt_feat': flow_prompt_feat,
             'flow_prompt_token': flow_prompt_token,
-            'speaker_embedding': spk_vec,
+            'speaker_embedding': flow_spk_vec,
             'llm_speaker_embedding': spk_vec,
         }
         speaker_infos[tts_id] = cur_info

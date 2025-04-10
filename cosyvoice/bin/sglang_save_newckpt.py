@@ -1,6 +1,6 @@
-from transformers import Qwen2ForCausalLM, AutoConfig
+from transformers import Qwen2ForCausalLM, AutoConfig, Qwen2Config
 import torch
-import sys, os
+import json
 
 
 
@@ -37,7 +37,9 @@ if __name__ == "__main__":
             return outputs
 
     ### 实例化自定义模型并加载实际训好的模型
-    config = AutoConfig.from_pretrained(pretrain_path)
+    # config = AutoConfig.from_pretrained(pretrain_path)
+    config_dict = json.load(open(f"{pretrain_path}/config.json"))
+    config = Qwen2Config(**config_dict)
     custom_model = Qwen2ForCausalLM_lamtts(config)
 
     state_dict = torch.load(true_model_path) # ["model"]

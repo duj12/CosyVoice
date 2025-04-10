@@ -12,11 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os.path
+
 from typing import Dict, Optional, Callable, List, Generator, Tuple
 import torch
 from torch import nn
 import torch.nn.functional as F
-from transformers import Qwen2ForCausalLM
+from transformers import Qwen2ForCausalLM, Qwen2Config
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from cosyvoice.utils.common import IGNORE_ID, th_accuracy
 from cosyvoice.transformer.label_smoothing_loss import LabelSmoothingLoss
@@ -933,7 +935,13 @@ class TransformerLM_Phoneme_SpkAdapt(torch.nn.Module):
 class Qwen2Encoder(torch.nn.Module):
     def __init__(self, pretrain_path):
         super().__init__()
-        self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path)
+        if os.path.exists(f"{pretrain_path}/model.safetensors"):
+            logger.info(f"Load Pretrained {pretrain_path}/model.safetensors")
+            self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path)
+        else:
+            config_dict = json.load(open(f"{pretrain_path}/config.json"))
+            config = Qwen2Config(**config_dict)
+            self.model = Qwen2ForCausalLM(config)
 
     def forward_one_step(self, xs, masks, cache=None):
         input_masks = masks[:, -1, :]
@@ -1658,6 +1666,7 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
             spk_embed_dim: int = 512,
             use_frontend_prsd: bool = False,
             use_pause_label: bool = False,
+            qwen_dtype: str = 'fp32',
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -1673,7 +1682,8 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
         ])
         self.use_frontend_prsd = use_frontend_prsd
         self.use_pause_label = use_pause_label
-        logger.info(f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}")
+        self.qwen_dtype = qwen_dtype
+        logger.info(f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}, qwen dtype: {self.qwen_dtype}")
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(
@@ -1793,27 +1803,55 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
         sos_eos_emb = self.llm_embedding.weight[self.sos_eos].reshape(1, 1, -1)
         task_id_emb = self.llm_embedding.weight[self.task_id].reshape(1, 1, -1)
 
-        # 4. encode speech_token
-        speech_token = self.speech_embedding(speech_token)
+        use_quant = False
+        quant_type = torch.float32
+        if self.qwen_dtype == 'bf16':
+            use_quant = True
+            quant_type = torch.bfloat16
+            autocast = torch.cuda.amp.autocast(enabled=True,
+                                               dtype=quant_type)
+        elif self.qwen_dtype == 'fp16':
+            use_quant = True
+            quant_type = torch.float16
+            autocast = torch.cuda.amp.autocast(enabled=True,
+                                               dtype=quant_type)
+        else:
+            autocast = torch.cuda.amp.autocast(enabled=False)
 
-        # 5. unpad and pad
-        lm_input, lm_input_len = self.pad_unpad_sequence(
-            sos_eos_emb, embedding, pho_token, pho_token_len,
-            task_id_emb, speech_token, speech_token_len)
+        # 下面几步在加速框架中以半精度进行加速推理
+        if use_quant:  # 模拟推理时量化损失
+            self.speech_embedding = self.speech_embedding.to(quant_type).to(torch.float32)
+            self.llm = self.llm.to(quant_type).to(torch.float32)
+            self.llm_decoder = self.llm_decoder.to(quant_type).to(torch.float32)
+        with autocast:
+            # 4. encode speech_token
+            speech_token = self.speech_embedding(speech_token)
 
-        # 6. run lm forward
-        # llm_input_mask = torch.tril(torch.ones((
-        #     lm_input.size(0), lm_input.size(1), lm_input.size(1)),
-        #     device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文. 推理的时候用
-        llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
-        # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
-        llm_input_mask = add_optional_chunk_mask(
-            lm_input, llm_input_mask, use_dynamic_chunk=False,
-            use_dynamic_left_chunk=False, decoding_chunk_size=-1,
-            static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
+            # 5. unpad and pad
+            lm_input, lm_input_len = self.pad_unpad_sequence(
+                sos_eos_emb, embedding, pho_token, pho_token_len,
+                task_id_emb, speech_token, speech_token_len)
+            if use_quant:  # 模拟推理时量化损失
+                lm_input = lm_input.to(quant_type).to(torch.float32)
 
-        lm_output, lm_output_mask = self.llm.forward_one_step(lm_input, llm_input_mask.to(device))
-        logits = self.llm_decoder(lm_output)
+            # 6. run lm forward
+            # llm_input_mask = torch.tril(torch.ones((
+            #     lm_input.size(0), lm_input.size(1), lm_input.size(1)),
+            #     device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文. 推理的时候用
+            llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
+            # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
+            llm_input_mask = add_optional_chunk_mask(
+                lm_input, llm_input_mask, use_dynamic_chunk=False,
+                use_dynamic_left_chunk=False, decoding_chunk_size=-1,
+                static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
+
+            lm_output, lm_output_mask = self.llm.forward_one_step(lm_input, llm_input_mask.to(device))
+            if use_quant:  # 模拟推理时量化损失
+                lm_output = lm_output.to(quant_type).to(torch.float32)
+            logits = self.llm_decoder(lm_output)
+            if use_quant:  # 模拟推理时量化损失
+                logits = logits.to(quant_type).to(torch.float32)
+
         loss = self.criterion_ce(logits, lm_target)
         acc = th_accuracy(logits.view(-1, self.speech_token_size + 3),
                           lm_target, ignore_label=IGNORE_ID)

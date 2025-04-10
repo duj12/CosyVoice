@@ -12,17 +12,16 @@ def get_args():
     parser = argparse.ArgumentParser(
         description='Extract speaker vectors offline.')
     parser.add_argument('--spkemb_ckpt',
-                        default="../../../pretrained_models/speaker_encoder_v2.pt",
+                        default="/data/megastore/SHARE/TTS/pretrained_models/speaker_encoder_v2.pt",
                         help='checkpoint model')
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--data_json', type=list, default=[
-        ["/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.ID36+37.10min.json", 0, 1],
-        ["/data/megastore/SHARE/TTS/VoiceClone3/MengNiu/MengNiu.vits.json", 0, 1],
-        ["/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC1/ENTTS_VC1.ID12.json", 1, 1],
-        ["/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC3/ENTTS_VC3.ID88.json", 1, 1]],
-                        help='the json file path')
+            [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
+            [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
+            [ "/data/megastore/SHARE/TTS/VoiceClone/LTTS/LTTS.vits.json",0,1 ]],
+        help='the json file path')
     parser.add_argument('--save_path', type=str,
-                        default="../../../pretrained_models/fewshot_spk_vec.pt",
+                        default="/data/megastore/SHARE/TTS/pretrained_models/TTS_spk_vec.pt",
                         help='the vector save path')
     parser.add_argument('--data_scp', type=str, default="",
                         help='the wav.scp path')
@@ -46,15 +45,18 @@ def get_wav_path(json_file_list):
 
         for speaker, info in dataset_info.items():
             speaker_folder = speaker.split('|')[0]
-            sid = speaker.split('|')[1]
-            if speaker_folder not in spk2wavpath:
-                spk2wavpath[speaker_folder] = []
+            sid = f"{data_name}-{speaker_folder}"
+            print(f"load speaker {sid}")
+            if sid not in spk2wavpath:
+                spk2wavpath[sid] = []
             total_dur, file_list = info
             for fname, dur, sequence in file_list:
                 pho = sequence['text']
                 wav_path = os.path.join(wave_dir, speaker_folder,
                                         '{}.wav'.format(fname))
-                spk2wavpath[speaker_folder].append(wav_path)
+                spk2wavpath[sid].append(wav_path)
+                if len(spk2wavpath[sid]) > 60:
+                    break
 
     return spk2wavpath
 
@@ -99,6 +101,7 @@ if __name__ == "__main__":
     speaker_vectors = {}
     speaker_utts = {}
     for spk in spk2wavpath:
+        print(f"Processing speaeker {spk}")
         wav_path_list = spk2wavpath[spk]
         for batch in batch_iterator(wav_path_list, args.batch_size):
             batch_emb = get_spkemb(batch, spkemb_model)

@@ -45,6 +45,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     spk_embed_dim: !ref <spk_embed_dim>
     use_frontend_prsd: !ref <use_pause_label>
     use_pause_label: !ref <use_pause_label>
+    qwen_dtype: !ref <dtype>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
         output_size: 1024

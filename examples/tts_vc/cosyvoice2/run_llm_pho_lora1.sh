@@ -6,14 +6,14 @@ stage=0
 stop_stage=0
 
 # train llm_pho
-export CUDA_VISIBLE_DEVICES="7"
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
-num_workers=8
+num_workers=2
 prefetch=100
 train_engine=torch_ddp
-exp_name=llm_pho_31w_tts_lora_all1
+exp_name=llm_pho_31w1_tts0_lora1
 exp_conf=cosyvoice_pho_lora1
 portnum=2101
 pretrained_model_dir=exp/$exp_name
