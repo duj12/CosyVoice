@@ -27,6 +27,7 @@ import cosyvoice.loralib as lora
 from hyperpyyaml import load_hyperpyyaml
 from torch.distributed.elastic.multiprocessing.errors import record
 from cosyvoice.utils.executor_online_codec import Executor
+from cosyvoice.utils.ema import EMA as ExponentialMovingAverage
 from cosyvoice.utils.train_utils import (
     init_distributed,  init_optimizer_and_scheduler,
     init_summarywriter, save_model,
@@ -203,6 +204,9 @@ def main():
         torch.backends.cuda.matmul.allow_tf32 = True  # speedup large matrix multiply
         torch.backends.cudnn.allow_tf32 = True  # speedup conv layers
 
+    # ema_decay = configs.get('ema_decay', 0.9)
+    # ema = ExponentialMovingAverage(model, decay=ema_decay)
+    # ema.to(f'cuda:{rank}')
 
     # Start training loop
     for epoch in range(start_epoch, info_dict['max_epoch']):
