@@ -7,7 +7,7 @@ __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 # dtype: 'bf16'
 
 # fixed params
-codec_type: "s3tokenizer_v2"
+codec_type: "yhcodec_v1"
 sample_rate: 24000
 llm_input_size: 896
 llm_output_size: 896
@@ -22,10 +22,15 @@ s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: True  # whether use human labeled or MFA aligned pause labels
 
+codec:
+    version: 'v1_40_pretrained_ft'
+    basepath: '/data/megastore/Projects/liyuhan/pretrained_models'
+
+
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
 # for system/third_party class/function, we do not require this.
-llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
+llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_MultiCode
     text_encoder_input_size: !ref <text_encoder_input_size>
     llm_input_size: !ref <llm_input_size>
     llm_output_size: !ref <llm_output_size>
@@ -38,7 +43,7 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     text_lang_dim: 16
     text_prsd_size: 6      # prosody size
     text_prsd_dim: 32
-    speech_token_size: 6561
+    speech_token_size: 1000
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
@@ -182,7 +187,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 6
+    batch_size: 4
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft

@@ -20,6 +20,7 @@ import os
 import torch
 import json
 import re
+import sys
 import datetime
 import yaml
 
@@ -31,9 +32,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from torch.nn.utils.rnn import pad_sequence
-
 from deepspeed.runtime.zero.stage_1_and_2 import estimate_zero2_model_states_mem_needs_all_live
-
 from hyperpyyaml import load_hyperpyyaml
 from cosyvoice.dataset.dataset import Dataset
 from cosyvoice.utils.scheduler import WarmupLR, NoamHoldAnnealing, ConstantLR
@@ -41,6 +40,8 @@ from cosyvoice.dataset.dataset_kaldidata import Dataset as KaldiDataset
 from cosyvoice.dataset.dataset_jsondata import Dataset as JsonDataset
 import s3tokenizer
 from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
+sys.path.append('/data/megastore/Projects/DuJing/code/lam_tts/tts/acoustics/lamtts')
+from pretrained_models.yhcodecv1.test_api import CodecV1Infer
 
 
 def init_distributed(args):
@@ -438,6 +439,10 @@ def init_codec_and_embed_model(configs, rank=0):
     elif configs['codec_type'] == 's3tokenizer_v2':
         codec_model = s3tokenizer.load_model(
             'speech_tokenizer_v2_25hz', configs['s3tokenizer_ckpt'])
+    elif configs['codec_type'] == 'yhcodec_v1':
+        codec_model = CodecV1Infer(**configs['codec'])
+        codec_model.device = f"cuda:{rank}"
+
     codec_model = codec_model.cuda(rank)
     codec_model = freeze(codec_model)
 
@@ -456,13 +461,10 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
     wave = batch_dict['speech'].to(codec_model.device)
     wave_len = batch_dict['speech_len'].to(codec_model.device)
     with torch.no_grad():
-        if configs['codec_type'] == 'facodec':
-            enc_out, prosody_latent = codec_model.encode(wave.unsqueeze(1))
-            vq_post_emb, vq_id, spk_embs = codec_model.quantize(
-                enc_out, prosody_latent)
-            codec_speaker_embs = spk_embs  # B D
-            speech_code = vq_id  # B T 6
-            speech_code_len = wave_len // codec_model.fa_en.hop_length
+        if configs['codec_type'] == 'yhcodec_v1':
+            speech_code = codec_model.recon(wave, 'vq')[0].transpose(1, 2)  # [B,T,C]
+            speech_code_len = wave_len // codec_model.config['audio']['frame_length']
+
         elif configs['codec_type'].startswith('s3tokenizer'):
             mels = []
             import s3tokenizer

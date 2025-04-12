@@ -173,3 +173,45 @@ def mask_to_bias(mask: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     #     chunk_masks = (1.0 - chunk_masks) * torch.finfo(dtype).min
     mask = (1.0 - mask) * torch.finfo(dtype).min
     return mask
+
+def get_delay_pattern_codec(codec_in, bosid, eosid):
+    """
+    Args:
+        codec_in: (N, T, NUM).
+        - [B, a, b, P]
+        - [B, c, d, P]
+        - [B, e, f, P]
+        - [B, g, h, P]
+    Returns:
+        - [B, a, b, P, P, P, P]
+        - [B, B, c, d, P, P, P]
+        - [B, B, B, e, f, P, P]
+        - [B, B, B, B, g, h, P]
+    """
+    indim = codec_in.ndim
+    if indim == 2:
+        codec_in = codec_in.unsqueeze(0)
+    bsz, seq_len, num_codebooks  = codec_in.size()
+    codec_in_shifted = codec_in.data.new(bsz, seq_len+num_codebooks-1, num_codebooks)
+    codec_in_shifted[:,:,:] = eosid
+    for idx in range(0, num_codebooks):
+        codec_in_shifted[:, idx:idx+seq_len,idx] = codec_in[:, :seq_len, idx]
+        codec_in_shifted[:,  :idx,idx] = bosid
+    if indim == 2:
+        codec_in_shifted = codec_in_shifted.squeeze(0)
+    return codec_in_shifted
+
+def revert_delay_pattern_codec(codec_in):
+    if codec_in.ndim == 4:
+        bsz, seq_len, _, num_codebooks = codec_in.size()
+        codec_in = codec_in.transpose(-1,-2)
+    else:
+        bsz, seq_len,  num_codebooks = codec_in.size()
+    real_seq_len = seq_len - (num_codebooks-1)
+    codec_in_revert = torch.zeros_like(codec_in)
+    for idx in range(0, num_codebooks):
+        codec_in_revert[:, :real_seq_len, idx] = codec_in[:, idx:idx+real_seq_len, idx]
+    codec_in_revert = codec_in_revert[:, :real_seq_len,...]
+    if codec_in.ndim == 4:
+        codec_in_revert = codec_in_revert.transpose(-1,-2)
+    return codec_in_revert
