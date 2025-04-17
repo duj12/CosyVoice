@@ -15,6 +15,7 @@ qwen_pretrain_path: "../../../pretrained_models/CosyVoice2-0.5B/CosyVoice-BlankE
 # second of min length, if the duration of a audio is less than this, it will be duplicated.
 # for speaker audio crop, 0 means do not crop
 spk_audio_crop: 10
+rich_sample_short_utt: 50
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"

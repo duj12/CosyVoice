@@ -253,7 +253,7 @@ def Dataset(json_file,
                 if utt in utt2wav:
                     # 同一个数据集里面有同名的音频，他们文本可能不同，处理数据时text文件只保留了其中一个的文本，直接删掉这些重名数据好了
                     # logging.warning(f"{utt} is duplicated. remove it from train data.")
-                    del utt2wav[utt], utt2pho[utt], utt2spk[utt]
+                    # del utt2wav[utt], utt2pho[utt], utt2spk[utt]
                     duplicated_utt += 1
                     continue
 
@@ -261,7 +261,7 @@ def Dataset(json_file,
                 utt2pho[utt] = pho
                 utt2spk[utt] = speaker
                 valid_utt_list.append(utt)
-                if rich_sample_short_utt>0 and len(pho) < 10:  # 对音素序列长度低于10的音频富采样
+                if rich_sample_short_utt>0 and len(pho) < 20:  # 对音素序列长度低于20的音频富采样
                     valid_utt_list.extend([utt]*rich_sample_short_utt)
 
         text_path = os.path.join(kaldi_data_dir, "text_punc")
@@ -289,8 +289,8 @@ def Dataset(json_file,
     else:
         add_one_data(json_file)
 
-    if need_text:
-        valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
+    # if need_text:
+    #     valid_utt_list = list(set(utt2wav.keys()) & set(utt2text.keys()))
     logging.info(f"Total utts: {len(utt2wav.keys())}. Actual total samples {len(valid_utt_list)}")
 
     tts_text = None

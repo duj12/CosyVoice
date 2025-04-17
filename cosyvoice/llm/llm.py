@@ -2198,10 +2198,13 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
         # 4. sampling method
         self.sampling = sampling
 
+        # sglang 推理时，去掉模型中qwen部分的显存, 将qwen_token_embed剥离出来
+        self.qwen_token_embed = self.llm.model.model.embed_tokens
+
         # 5. use_sglang
         self.use_sglang = (qwen_sglang_config is not None)
         if self.use_sglang:
-            # self.llm = None
+            self.llm = None
             from sglang.test.test_utils import (
                 DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
                 DEFAULT_URL_FOR_TEST,
@@ -2283,93 +2286,6 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
                                 padding_value=IGNORE_ID)
         return lm_input, lm_input_len
 
-    def forward(
-            self,
-            batch: dict,
-            device: torch.device,
-    ) -> Dict[str, Optional[torch.Tensor]]:
-        """
-        Args:
-            text: (B, L, D)
-            text_lengths: (B,)
-            audio: (B, T, N) or (B, T)
-            audio_lengths: (B,)
-        """
-        text_token = batch['text_token'].to(device)
-        text_token_len = batch['text_token_len'].to(device)
-        pho_token = batch['pho_token'].to(device)
-        pho_token_len = batch['pho_token_len'].to(device)
-        speech_token = batch['speech_token'].to(device)
-        speech_token_len = batch['speech_token_len'].to(device)
-        embedding = batch['embedding'].to(device)
-
-        # 0. prepare llm_target
-        lm_target = [torch.tensor(
-            [IGNORE_ID] * (2 + pho_token_len[i]) +
-            speech_token[i, :speech_token_len[i]].tolist() +
-            [self.speech_token_size]) for i in range(text_token.size(0))]
-        lm_target = pad_sequence(lm_target, batch_first=True,
-                                 padding_value=IGNORE_ID).to(device)
-
-        # 1. encode phoneme and text
-        pho_embed_list = []
-        for i in range(len(self.text_embedding)):
-            embed = self.text_embedding[i](pho_token[:, :, i])
-            if not self.use_frontend_prsd and i == 3:
-                embed *= 0.0
-            pho_embed_list.append(embed)
-        pho_token = torch.cat(pho_embed_list, dim=-1)
-        pho_token, pho_token_len = self.encode(pho_token, pho_token_len)
-
-        text_token = self.llm.model.model.embed_tokens(text_token)
-        text_mask = ~make_pad_mask(text_token_len,
-                                   text_token.size(1)).unsqueeze(
-            1)  # (B, 1, T1)
-        pho_mask = ~make_pad_mask(pho_token_len, pho_token.size(1)).unsqueeze(
-            1)  # (B, 1, T2)
-        for src_attention in self.src_attention:
-            pho_token, pho_mask, text_token, text_mask = src_attention(
-                pho_token, pho_mask, text_token, text_mask)
-
-        # 2. embedding projection
-        embedding = F.normalize(embedding, dim=1)
-        embedding = self.spk_embed_affine_layer(embedding)
-        embedding = embedding.unsqueeze(1)
-
-        # 3. eos and task_id
-        sos_eos_emb = self.llm_embedding.weight[self.sos_eos].reshape(1, 1, -1)
-        task_id_emb = self.llm_embedding.weight[self.task_id].reshape(1, 1, -1)
-
-        # 4. encode speech_token
-        speech_token = self.speech_embedding(speech_token)
-
-        # 5. unpad and pad
-        lm_input, lm_input_len = self.pad_unpad_sequence(
-            sos_eos_emb, embedding, pho_token, pho_token_len,
-            task_id_emb, speech_token, speech_token_len)
-
-        # 6. run lm forward
-        # llm_input_mask = torch.tril(torch.ones((
-        #     lm_input.size(0), lm_input.size(1), lm_input.size(1)),
-        #     device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文. 推理的时候用
-        llm_input_mask = ~make_pad_mask(lm_input_len,
-                                        lm_input.size(1)).unsqueeze(
-            1)  # (B, 1, T)
-        # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
-        llm_input_mask = add_optional_chunk_mask(
-            lm_input, llm_input_mask, use_dynamic_chunk=False,
-            use_dynamic_left_chunk=False, decoding_chunk_size=-1,
-            static_chunk_size=-1, num_decoding_left_chunks=-1)  # B, T, T
-
-        lm_output, lm_output_mask = self.llm.forward_one_step(lm_input,
-                                                              llm_input_mask.to(
-                                                                  device))
-        logits = self.llm_decoder(lm_output)
-        loss = self.criterion_ce(logits, lm_target)
-        acc = th_accuracy(logits.view(-1, self.speech_token_size + 3),
-                          lm_target, ignore_label=IGNORE_ID)
-        return {'loss': loss, 'acc': acc}
-
     def sampling_ids(
             self,
             weighted_scores: torch.Tensor,
@@ -2377,16 +2293,17 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             sampling: int,
             ignore_eos: bool = True,
     ):
-        num_trials, max_trials = 0, 100
-        while True:
-            top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
-            if (not ignore_eos) or (self.speech_token_size not in top_ids):
-                break
-            num_trials += 1
-            if num_trials > max_trials:
-                raise RuntimeError(
-                    'sampling reaches max_trials {} and still get eos when ignore_eos is True, check your input!'.format(
-                        max_trials))
+        # num_trials, max_trials = 0, 100
+        # while True:
+        #     top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+        #     if (not ignore_eos) or (self.speech_token_size not in top_ids):
+        #         break
+        #     num_trials += 1
+        #     if num_trials > max_trials:
+        #         raise RuntimeError(
+        #             'sampling reaches max_trials {} and still get eos when ignore_eos is True, check your input!'.format(
+        #                 max_trials))
+        top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
         return top_ids
 
     @torch.inference_mode()
@@ -2425,7 +2342,7 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
 
         # 1. encode text
         pho, pho_len = self.encode(pho, pho_len)
-        text = self.llm.model.model.embed_tokens(text)
+        text = self.qwen_token_embed(text)
 
         text_mask = ~make_pad_mask(text_len, text.size(1)).unsqueeze(
             1)  # (B, 1, T1)
