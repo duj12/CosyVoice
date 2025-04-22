@@ -5,11 +5,11 @@ from torch import nn
 import torch.nn.functional as F
 from copy import deepcopy
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
-from typing import Dict, Optional, Callable, List, Generator, Tuple
+from typing import Callable, List, Generator, Tuple
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 from cosyvoice.llm.qwen2_5 import Qwen2ForCausalLM
 from cosyvoice.utils.common import IGNORE_ID
-from cosyvoice.utils.mask import make_pad_mask, add_optional_chunk_mask
+from cosyvoice.utils.mask import make_pad_mask
 from cosyvoice.transformer.decoder_layer import DecoderLayer
 from cosyvoice.transformer.attention import MultiHeadedAttention
 from cosyvoice.transformer.positionwise_feed_forward import PositionwiseFeedForward
@@ -46,6 +46,9 @@ class Qwen2EncoderInfer(Qwen2Encoder):
         self.graph = torch.cuda.CUDAGraph()
         self.dtype = dtype
         self.qwen_token_embed = deepcopy(self.model.model.embed_tokens)
+        # self.model = torch.compile(self.model, mode='max-autotune-no-cudagraphs',
+        #                       fullgraph=True, dynamic=False,
+        #                       backend='cudagraphs')
         self.model.to(self.dtype)
         
     @torch.inference_mode()
@@ -337,10 +340,13 @@ class Qwen2LM_Phoneme_Infer(torch.nn.Module):
         for i in range(max_len):
             y_pred, cache, cache_pos = self.llm.forward_one_step(
                 lm_input, cache=cache, cache_position=cache_pos)
-            logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
-            top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
-                                        sampling,
-                                        ignore_eos=True if i < min_len else False).item()
+            # logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
+            # top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
+            #                             sampling,
+            #                             ignore_eos=True if i < min_len else False).item()
+            logits = self.llm_decoder(y_pred[:, -1].to(torch.float32))
+            top_ids = self.sampling(logits, out_tokens)
+
             if top_ids == self.speech_token_size:
                 break
             if top_ids > self.speech_token_size:
