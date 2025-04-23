@@ -46,8 +46,8 @@ class HiFiGan(nn.Module):
         if self.tpr_loss_weight != 0:
             loss_tpr = tpr_loss(y_d_rs, y_d_gs, self.tpr_loss_tau)
         else:
-            loss_tpr = torch.zeros(1).to(device)
-        loss_f0 = torch.zeros(1).to(device)
+            loss_tpr = torch.tensor(0.0, dtype=torch.float32, device=device)
+        loss_f0 = torch.tensor(0.0, dtype=torch.float32, device=device)
         if generated_f0 is not None and pitch_feat is not None:
             loss_f0 = F.l1_loss(generated_f0, pitch_feat)
         loss = loss_gen + self.feat_match_loss_weight * loss_fm + \
