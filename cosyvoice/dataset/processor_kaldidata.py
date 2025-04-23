@@ -204,6 +204,7 @@ def truncate(data, truncate_length=24576, mode='train'):
     """
     for sample in data:
         waveform = sample['speech']
+        sample['ori_speech'] = waveform
         if waveform.shape[1] > truncate_length:
             start = random.randint(0, waveform.shape[1] - truncate_length)
             waveform = waveform[:, start: start + truncate_length]
@@ -373,12 +374,12 @@ def sort(data, sort_size=500, mode='train'):
     for sample in data:
         buf.append(sample)
         if len(buf) >= sort_size:
-            buf.sort(key=lambda x: x['speech_feat'].size(0), reverse=True)
+            buf.sort(key=lambda x: x['speech'].size(0), reverse=True)
             for x in buf:
                 yield x
             buf = []
     # The sample left over
-    buf.sort(key=lambda x: x['speech_feat'].size(0), reverse=True)
+    buf.sort(key=lambda x: x['speech'].size(0), reverse=True)
     for x in buf:
         yield x
 
@@ -473,6 +474,13 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
             "speech": speech,
             "speech_len": speech_len,
         }
+        if 'ori_speech' in sample[0]:
+            ori_speech = [sample[i]['ori_speech'].squeeze(dim=0) for i in order]
+            ori_speech_len = torch.tensor([i.size(0) for i in ori_speech], dtype=torch.int32)
+            ori_speech = pad_sequence(ori_speech, batch_first=True, padding_value=0)
+            batch['ori_speech'] = ori_speech
+            batch['ori_speech_len'] = ori_speech_len
+
         if 'speech_feat' in sample[0]:
             speech_feat = [sample[i]['speech_feat'] for i in order]
             speech_feat_len = torch.tensor([i.size(0) for i in speech_feat],
@@ -517,7 +525,7 @@ def padding(data, use_spk_embedding, mode='train', gan=False):
                                              text_prsd.unsqueeze(-1)], dim=-1)
             batch['pho_token_len'] = pho_token_len
 
-        if gan is True:
+        if gan is True and 'pitch_feat' in sample[0]:
             # in gan train, we need pitch_feat
             pitch_feat = [sample[i]['pitch_feat'] for i in order]
             pitch_feat_len = torch.tensor([i.size(0) for i in pitch_feat], dtype=torch.int32)

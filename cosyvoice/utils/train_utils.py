@@ -456,8 +456,7 @@ def init_codec_and_embed_model(configs, rank=0):
 
     return codec_model, spkemb_model
 
-def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
-                         configs):
+def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model, configs):
     wave = batch_dict['speech'].to(codec_model.device)
     wave_len = batch_dict['speech_len'].to(codec_model.device)
     with torch.no_grad():
@@ -487,6 +486,9 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model,
     batch_dict['speech_token'] = speech_code
     batch_dict['speech_token_len'] = speech_code_len
 
+    if 'ori_speech' in batch_dict:
+        wave = batch_dict['ori_speech'].to(codec_model.device)
+        wave_len = batch_dict['ori_speech_len'].to(codec_model.device)
     use_offline_spkemb = configs.get('use_offline_spkemb', False)
     if use_offline_spkemb:  # 使用离线已经提取好的说话人向量
         if 'speaker_vectors' not in configs:

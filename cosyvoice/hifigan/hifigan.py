@@ -32,7 +32,9 @@ class HiFiGan(nn.Module):
 
     def forward_generator(self, batch, device):
         real_speech = batch['speech'].to(device)
-        pitch_feat = batch['pitch_feat'].to(device)
+        pitch_feat = None
+        if 'pitch_feat' in batch:
+            pitch_feat = batch['pitch_feat'].to(device)
         # 1. calculate generator outputs
         generated_speech, generated_f0 = self.generator(batch, device)
         # 2. calculate discriminator outputs
@@ -45,7 +47,9 @@ class HiFiGan(nn.Module):
             loss_tpr = tpr_loss(y_d_rs, y_d_gs, self.tpr_loss_tau)
         else:
             loss_tpr = torch.zeros(1).to(device)
-        loss_f0 = F.l1_loss(generated_f0, pitch_feat)
+        loss_f0 = torch.zeros(1).to(device)
+        if generated_f0 is not None and pitch_feat is not None:
+            loss_f0 = F.l1_loss(generated_f0, pitch_feat)
         loss = loss_gen + self.feat_match_loss_weight * loss_fm + \
             self.multi_mel_spectral_recon_loss_weight * loss_mel + \
             self.tpr_loss_weight * loss_tpr + loss_f0

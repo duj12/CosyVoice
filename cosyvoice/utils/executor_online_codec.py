@@ -115,7 +115,9 @@ class Executor:
                 info_dict["batch_idx"] = batch_idx
                 # if cosyvoice_join(group_join, info_dict):
                 #     break
-
+                if codec_model is not None:
+                    batch_dict = get_codec_and_spkemb(
+                        batch_dict, codec_model, spkemb_model, self.configs)
                 # Disable gradient synchronizations across DDP processes.
                 # Within this context, gradients will be accumulated on module
                 # variables, which will later be synchronized.
@@ -176,10 +178,9 @@ class Executor:
             if self.gan is True:
                 batch_dict['turn'] = 'generator'
 
-            if self.gan is False:   # we only need speech token and speaker emb when train llm and flow
+            if codec_model is not None:
                 batch_dict = get_codec_and_spkemb(
-                    batch_dict, codec_model, spkemb_model,
-                    self.configs)
+                    batch_dict, codec_model, spkemb_model, self.configs)
 
             info_dict = batch_forward(model, batch_dict, None, info_dict)
 

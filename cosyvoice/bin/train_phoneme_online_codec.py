@@ -137,8 +137,12 @@ def main():
                     logging.info(resume_info)
 
             saved_state_dict = torch.load(args.checkpoint, map_location='cpu')
+            if 'generator' in saved_state_dict:
+                logging.info('use pretrained generator.')
+                saved_state_dict = saved_state_dict['generator']
+
             new_state_dict = {}
-            if gan and 'generator.m_source.l_linear.weight' not in saved_state_dict:
+            if gan and 'generator.m_source.l_linear.weight' not in saved_state_dict and 'generator.input_embedding.weight' not in saved_state_dict:
                 # 模型参数只保存了generator
                 dest_model = model.generator
                 logging.warning('discriminator is not pretrained!')
@@ -168,12 +172,7 @@ def main():
     model = wrap_cuda_model(args, model)
     rank = int(os.environ["LOCAL_RANK"])
 
-    if not gan:
-        codec_model, spkemb_model = init_codec_and_embed_model(configs, rank)
-
-    else:
-        codec_model = None
-        spkemb_model = None
+    codec_model, spkemb_model = init_codec_and_embed_model(configs, rank)
 
     # Get optimizer & scheduler
     model, optimizer, scheduler, optimizer_d, scheduler_d = init_optimizer_and_scheduler(args, configs, model, gan)
