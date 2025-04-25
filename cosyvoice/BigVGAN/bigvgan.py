@@ -261,6 +261,7 @@ class BigVGAN(
             vocab_size=6561,
             input_size=512,
             output_size=1024,
+            mel_bin=80,
             resblock="1",
             upsample_rates=[4,4,4,4,2,2],
             upsample_kernel_sizes=[8,8,4,4,4,4],
@@ -279,6 +280,7 @@ class BigVGAN(
         self.encoder1 = encoder1
         self.encoder2 = encoder2
         self.encoder_proj = torch.nn.Linear(self.encoder2.output_size(), output_size)
+        self.mel_proj = torch.nn.Linear(self.encoder2.output_size(), mel_bin)
         self.speaker_dim = speaker_embedding_dim
         self.use_cuda_kernel = use_cuda_kernel
 
@@ -388,8 +390,8 @@ class BigVGAN(
         x, x_lengths = self.encoder1(token, token_len)   # upsample * 2
         x, x_lengths = self.encoder2(x, token_len*2)       # upsample * 2
 
+        mel_feat_out = self.mel_proj(x)            # B T D
         x = self.encoder_proj(x).transpose(1, 2)   # B D T
-
         # BigVGAN
         # Pre-conv
         x = self.conv_pre(x)
@@ -421,7 +423,7 @@ class BigVGAN(
         else:
             x = torch.clamp(x, min=-1.0, max=1.0)  # Bound the output to [-1, 1]
 
-        return x.squeeze(1), None
+        return x.squeeze(1), (mel_feat_out, None)
 
     def remove_weight_norm(self):
         try:
@@ -437,94 +439,69 @@ class BigVGAN(
             print("[INFO] Model already removed weight norm. Skipping!")
             pass
 
-    # Additional methods for huggingface_hub support
-    def _save_pretrained(self, save_directory: Path) -> None:
-        """Save weights and config.json from a Pytorch model to a local directory."""
 
-        model_path = save_directory / "bigvgan_generator.pt"
-        torch.save({"generator": self.state_dict()}, model_path)
+if __name__ == '__main__':
+    """直接使用s3tokenizer得到的codec作为输入，以说话人向量作为condition，重建音频
+    """
+    import librosa
+    import soundfile as sf
+    import s3tokenizer
+    import torchaudio
+    from hyperpyyaml import load_hyperpyyaml
+    from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
 
-        config_path = save_directory / "config.json"
-        with open(config_path, "w") as config_file:
-            json.dump(self.h, config_file, indent=4)
+    config_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/conf/cosyvoice_bigvgan_tts.yaml"
+    with open(config_path, 'r') as f:
+        configs = load_hyperpyyaml(f, overrides={"use_cuda_kernel": True})
+    bigvgan = configs['bigvgan'].cuda()
 
-    @classmethod
-    def _from_pretrained(
-        cls,
-        *,
-        model_id: str,
-        revision: str,
-        cache_dir: str,
-        force_download: bool,
-        proxies: Optional[Dict],
-        resume_download: bool,
-        local_files_only: bool,
-        token: Union[str, bool, None],
-        map_location: str = "cpu",  # Additional argument
-        strict: bool = False,  # Additional argument
-        use_cuda_kernel: bool = False,
-        **model_kwargs,
-    ):
-        """Load Pytorch pretrained weights and return the loaded model."""
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/bigvgan_tts/epoch_2_step_40000.pt"
+    state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
+    bigvgan.load_state_dict(state_dict, strict=False)
 
-        # Download and load hyperparameters (h) used by BigVGAN
-        if os.path.isdir(model_id):
-            print("Loading config.json from local directory")
-            config_file = os.path.join(model_id, "config.json")
-        else:
-            config_file = hf_hub_download(
-                repo_id=model_id,
-                filename="config.json",
-                revision=revision,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                token=token,
-                local_files_only=local_files_only,
-            )
-        h = load_hparams_from_json(config_file)
+    wav_path = "/data/megastore/SHARE/TTS/ref_audios/caikangyong_10s.wav"
+    name = os.path.basename(wav_path).split('.')[0]
+    wave = torch.from_numpy(
+        librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
 
-        # instantiate BigVGAN using h
-        if use_cuda_kernel:
-            print(
-                f"[WARNING] You have specified use_cuda_kernel=True during BigVGAN.from_pretrained(). Only inference is supported (training is not implemented)!"
-            )
-            print(
-                f"[WARNING] You need nvcc and ninja installed in your system that matches your PyTorch build is using to build the kernel. If not, the model will fail to initialize or generate incorrect waveform!"
-            )
-            print(
-                f"[WARNING] For detail, see the official GitHub repository: https://github.com/NVIDIA/BigVGAN?tab=readme-ov-file#using-custom-cuda-kernel-for-synthesis"
-            )
-        model = cls(h, use_cuda_kernel=use_cuda_kernel)
+    speech_tokenzier = s3tokenizer.load_model(
+            "speech_tokenizer_v2_25hz", "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/s3tokenizer/").cuda()
+    def wav2token(speech_tokenzier, waves_padded, sr_in=24000, wave_lengths=None):
+        '''
+            waves_padded: B T
+        '''
+        if not wave_lengths:
+            wave_lengths = torch.LongTensor(1).to(waves_padded.device)
+            wave_lengths[0] = waves_padded.size(-1)
+        mels = []
+        batch_size = waves_padded.size(0)
+        for i in range(batch_size):
+            audio = waves_padded[i, :wave_lengths[i]]
+            # whisper speech code use 16k sample_rate
+            if sr_in != 16000:
+                resampler = torchaudio.transforms.Resample(
+                    sr_in, 16000).to(audio.device)
+                audio = resampler(audio)
+            mels.append(s3tokenizer.log_mel_spectrogram(audio))
+        mels, mels_lens = s3tokenizer.padding(mels)
+        mels = mels.to(waves_padded.device)
+        mels_lens = mels_lens.to(waves_padded.device)
+        speech_code, speech_code_len = speech_tokenzier.quantize(
+            mels, mels_lens)
+        return speech_code, speech_code_len
 
-        # Download and load pretrained generator weight
-        if os.path.isdir(model_id):
-            print("Loading weights from local directory")
-            model_file = os.path.join(model_id, "bigvgan_generator.pt")
-        else:
-            print(f"Loading weights from {model_id}")
-            model_file = hf_hub_download(
-                repo_id=model_id,
-                filename="bigvgan_generator.pt",
-                revision=revision,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                token=token,
-                local_files_only=local_files_only,
-            )
+    speaker_encoder = SpeakerEmbedding(ckpt_path="/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/SpeakerEncoder/speaker_encoder_v2.pt").cuda()
+    def wav2spkemb(speaker_encoder, waves_padded):
+        wave_lengths = torch.LongTensor(1).to(waves_padded.device)
+        wave_lengths[0] = waves_padded.size(-1)
+        speaker_embedding = speaker_encoder(waves_padded, wave_lengths)
+        return speaker_embedding
 
-        checkpoint_dict = torch.load(model_file, map_location=map_location)
-
-        try:
-            model.load_state_dict(checkpoint_dict["generator"])
-        except RuntimeError:
-            print(
-                f"[INFO] the pretrained checkpoint does not contain weight norm. Loading the checkpoint after removing weight norm!"
-            )
-            model.remove_weight_norm()
-            model.load_state_dict(checkpoint_dict["generator"])
-
-        return model
+    with torch.no_grad():
+        speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
+        speaker_emb = wav2spkemb(speaker_encoder, wave)
+        audio, _ = bigvgan.forward({"speech_token":speech_token,
+                                 "speech_token_len":speech_code_len,
+                                 "embedding":speaker_emb}, device=wave.device)
+        print(f"input: {wave.size()} recon: {audio.size()}")
+    sf.write(f"test.wav", audio[0].cpu().detach().numpy(), 24000)

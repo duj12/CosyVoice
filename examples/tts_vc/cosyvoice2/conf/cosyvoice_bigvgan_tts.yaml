@@ -39,13 +39,14 @@ token_encoder: !new:cosyvoice.transformer.upsample_encoder.UpsampleConformerEnco
     use_cnn_module: False
     macaron_style: False
 
+use_cuda_kernel: False
 bigvgan: !new:cosyvoice.BigVGAN.bigvgan.BigVGAN
     vocab_size: 6561   # input 25Hz codec
     input_size: 512
     output_size: 1024
     encoder1: !ref <token_encoder>   # 2 x upsample
     encoder2: !ref <token_encoder>   # 2 x upsample
-
+    # codec is encoded into mel feat, then reconstruct to wave
     resblock: "1"
     upsample_rates: [8, 5, 3, 2]     # 240 x upsample
     upsample_kernel_sizes: [16, 11, 7, 2]
@@ -57,7 +58,7 @@ bigvgan: !new:cosyvoice.BigVGAN.bigvgan.BigVGAN
 
     activation: "snakebeta"
     snake_logscale: true
-    use_cuda_kernel: False
+    use_cuda_kernel: !ref <use_cuda_kernel>
 
 llm:
 
@@ -66,11 +67,11 @@ flow:
 
 # gan related module
 mel_spec_transform1: !name:cosyvoice.dataset.processor_kaldidata.mel_spectrogram
-    n_fft: 1920
+    n_fft: 480
     num_mels: 80
     sampling_rate: !ref <sample_rate>
-    hop_size: 480
-    win_size: 1920
+    hop_size: 240
+    win_size: 480
     fmin: 0
     fmax: null
     center: False
@@ -106,13 +107,13 @@ resample: !name:cosyvoice.dataset.processor_kaldidata.resample
 truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
     truncate_length: 48000  # must be a multiplier of hop_size
 feat_extractor: !name:cosyvoice.dataset.processor_kaldidata.mel_spectrogram
-    n_fft: 1920
+    n_fft: 480
     num_mels: 80
     sampling_rate: !ref <sample_rate>
-    hop_size: 480
-    win_size: 1920
+    hop_size: 240
+    win_size: 480
     fmin: 0
-    fmax: 8000
+    fmax: null
     center: False
 compute_fbank: !name:cosyvoice.dataset.processor_kaldidata.compute_fbank
     feat_extractor: !ref <feat_extractor>
@@ -150,6 +151,7 @@ data_pipeline_gan: [
     !ref <filter>,
     !ref <resample>,
     !ref <truncate>,
+    !ref <compute_fbank>,
     !ref <shuffle>,
     !ref <sort>,
     !ref <batch>,

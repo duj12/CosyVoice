@@ -32,11 +32,19 @@ class HiFiGan(nn.Module):
 
     def forward_generator(self, batch, device):
         real_speech = batch['speech'].to(device)
-        pitch_feat = None
+        pitch_feat, mel_feat = None, None
         if 'pitch_feat' in batch:
             pitch_feat = batch['pitch_feat'].to(device)
+        if 'speech_feat' in batch:
+            mel_feat = batch['speech_feat'].to(device)
         # 1. calculate generator outputs
         generated_speech, generated_f0 = self.generator(batch, device)
+
+        loss_mel_recon = torch.tensor(0.0, dtype=torch.float32, device=device)
+        if isinstance(generated_f0, tuple):
+            generated_mel, generated_f0 = generated_f0
+            loss_mel_recon = F.mse_loss(generated_mel, mel_feat, reduction="sum")
+
         # 2. calculate discriminator outputs
         y_d_rs, y_d_gs, fmap_rs, fmap_gs = self.discriminator(real_speech, generated_speech)
         # 3. calculate generator losses, feature loss, mel loss, tpr losses [Optional]
@@ -52,8 +60,9 @@ class HiFiGan(nn.Module):
             loss_f0 = F.l1_loss(generated_f0, pitch_feat)
         loss = loss_gen + self.feat_match_loss_weight * loss_fm + \
             self.multi_mel_spectral_recon_loss_weight * loss_mel + \
-            self.tpr_loss_weight * loss_tpr + loss_f0
-        return {'loss': loss, 'loss_gen': loss_gen, 'loss_fm': loss_fm, 'loss_mel': loss_mel, 'loss_tpr': loss_tpr, 'loss_f0': loss_f0}
+            self.tpr_loss_weight * loss_tpr + loss_f0 + loss_mel_recon
+        return {'loss': loss, 'loss_gen': loss_gen, 'loss_fm': loss_fm, 'loss_mel': loss_mel,
+                'loss_tpr': loss_tpr, 'loss_f0': loss_f0, "loss_mel_recon": loss_mel_recon, }
 
     def forward_discriminator(self, batch, device):
         real_speech = batch['speech'].to(device)
