@@ -2397,9 +2397,9 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
                     data = json.loads(chunk[5:].strip("\n"))
                     top_ids = data["token_ids"][-1]
 
-                    if top_ids == self.speech_token_size:
+                    if top_ids >= self.speech_token_size:
                         break
-                    if top_ids > self.speech_token_size:
+                    if top_ids > self.speech_token_size:  # sglang推理时会对输入embedding进行padding，会增加token个数
                         logger.warning(f"================big token！！！{top_ids}")
                         continue
 

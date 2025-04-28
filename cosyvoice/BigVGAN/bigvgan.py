@@ -455,7 +455,7 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={"use_cuda_kernel": True})
     bigvgan = configs['bigvgan'].cuda()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/bigvgan_tts/epoch_2_step_40000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/bigvgan_tts/epoch_14_step_190000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     bigvgan.load_state_dict(state_dict, strict=False)
 
