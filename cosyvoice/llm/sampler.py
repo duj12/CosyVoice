@@ -36,7 +36,7 @@ class Sampler(nn.Module):
 
 
 sampler = Sampler()
-sampler = torch.compile(sampler, mode='reduce-overhead')
+# sampler = torch.compile(sampler, mode='reduce-overhead')
 
 import time
 

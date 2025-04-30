@@ -2058,10 +2058,10 @@ class Qwen2LM_Phoneme_MultiCode(torch.nn.Module):
         max_len = int((text_len - prompt_text_len) * max_token_text_ratio)
 
         # 5. step by step decode
-        leftpoint = 1#去除bos
+        leftpoint = 1  # 去除bos
         chunksize = 1
         winsize = chunksize + self.codebooknum - 1
-        out_tokens = torch.full((1,1,self.codebooknum),self.bosid,dtype=torch.long,device=device)
+        out_tokens = torch.full((1,0,self.codebooknum), self.bosid, dtype=torch.long, device=device)
         cache = None
         for i in range(max_len):
             y_pred, cache = self.llm.forward_one_step(
