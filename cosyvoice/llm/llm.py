@@ -2058,56 +2058,35 @@ class Qwen2LM_Phoneme_MultiCode(torch.nn.Module):
         max_len = int((text_len - prompt_text_len) * max_token_text_ratio)
 
         # 5. step by step decode
-        if self.use_sglang:
-            payload = {
-                "stream": True,
-                "input_embeds": lm_input.squeeze().tolist(),
-                "sampling_params": {
-                    "stop_token_ids": [self.speech_token_size],
-                    "max_new_tokens": max_len,
-                    "temperature": 1.0,
-                    "top_p": self.sampling.keywords['top_p'],
-                    "top_k": self.sampling.keywords['top_k']
-                }
-            }
-            response = self.send_request(self.base_url, payload)
-            for chunk in response.iter_lines(decode_unicode=False):
-                chunk = chunk.decode("utf-8")
-                if chunk and chunk.startswith("data:"):
-                    if chunk == "data: [DONE]":
-                        break
-                    data = json.loads(chunk[5:].strip("\n"))
-                    top_ids = data["token_ids"][-1]
+        leftpoint = 1#去除bos
+        chunksize = 1
+        winsize = chunksize + self.codebooknum - 1
+        out_tokens = torch.full((1,1,self.codebooknum),self.bosid,dtype=torch.long,device=device)
+        cache = None
+        for i in range(max_len):
+            y_pred, cache = self.llm.forward_one_step(
+                lm_input,
+                masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]),
+                                 device=lm_input.device).to(torch.bool),
+                cache=cache)
 
-                    if top_ids == self.speech_token_size:
-                        break
-                    if top_ids > self.speech_token_size:
-                        logger.warning(f"================big token！！！{top_ids}")
-                        continue
+            logit_all = y_pred[:, -1:, :]
+            curlogit = self.llm_decoder(logit_all)
+            nexttokens = self.sampling(curlogit.squeeze().transpose(0, 1), out_tokens)
 
-                    yield top_ids
-        else:
-            out_tokens = []
-            cache = None
-            for i in range(max_len):
-                y_pred, cache = self.llm.forward_one_step(
-                    lm_input,
-                    masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]),
-                                     device=lm_input.device).to(torch.bool),
-                    cache=cache)
-                logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
-                top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
-                                            sampling,
-                                            ignore_eos=True if i < min_len else False).item()
-                if top_ids == self.speech_token_size:
-                    break
-                if top_ids > self.speech_token_size:
-                    logger.warning(f"================big token！！！{top_ids}")
-                    continue
-                # in stream mode, yield token one by one
-                yield top_ids
-                out_tokens.append(top_ids)
-                lm_input = self.speech_embedding.weight[top_ids].reshape(1, 1, -1)
+            if (nexttokens == self.eosid).all():
+                returncodes = out_tokens[:,leftpoint:leftpoint+winsize]
+                yield revert_delay_pattern_codec(returncodes)
+                break
+
+            out_tokens = torch.cat([out_tokens, nexttokens[None,None,:]],dim=1)
+            if out_tokens.shape[1] == leftpoint + winsize:
+                returncodes = out_tokens[:,leftpoint:leftpoint+winsize]
+                leftpoint += chunksize
+                yield revert_delay_pattern_codec(returncodes)
+            lm_input = torch.zeros((1, 1, 896), device=device, dtype=y_pred.dtype)
+            for idx, nexttoken in enumerate(nexttokens):
+                lm_input += self.speech_embedding[idx](nexttoken)
 
 
 class Qwen2LM_Phoneme_Sglang(torch.nn.Module):

@@ -62,6 +62,9 @@ if __name__ == "__main__":
     new_vc_state_dict = VC_model.state_dict()
     torch.save(new_vc_state_dict, true_model_path)
 
+    # # 把最后logits层的输出维度限定一下，避免超过speech_token_size的输出
+    # state_dict['llm_decoder.weight'] = state_dict['llm_decoder.weight'][:6561+1,:]
+    # state_dict['llm_decoder.bias'] = state_dict['llm_decoder.bias'][:6561+1]
     # 把cosy的结构里套娃的实际的qwen的参数摘出来
     new_state_dict = {
         k.replace('llm.model.', '') if 'llm.model.' in k else k: v 

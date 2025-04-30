@@ -110,25 +110,6 @@ class Qwen2EncoderInfer(Qwen2Encoder):
     def to(self):
         self.model.to(self.dtype)
         
-if __name__ == "__main__":
-    from tqdm import tqdm
-    import time
-    dtype = torch.bfloat16
-    
-    model = Qwen2EncoderInfer('/home/liyuhan/Project_megastore/pretrained_models/Qwen2.5-0.5B',max_cache_len=5000,dtype=dtype).cuda()
-    # model = torch.compile(model,mode='max-autotune-no-cudagraphs',fullgraph=True,dynamic=False,backend='cudagraphs')
-    #warmup
-    model.warmup()
-    #prefilling
-    xs = torch.rand(1, 100, 896).cuda().to(dtype)
-    y, cache = model.prefill(xs)
-    pos = 100
-    #decode
-    for i in tqdm(range(1000)):
-        y, cache = model.decode(y[:,-1:,], cache, pos)
-        pos += 1
-    pass
-
 
 class Qwen2LM_Phoneme_Infer(torch.nn.Module):
     '''
@@ -340,12 +321,12 @@ class Qwen2LM_Phoneme_Infer(torch.nn.Module):
         for i in range(max_len):
             y_pred, cache, cache_pos = self.llm.forward_one_step(
                 lm_input, cache=cache, cache_position=cache_pos)
-            # logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
-            # top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
-            #                             sampling,
-            #                             ignore_eos=True if i < min_len else False).item()
-            logits = self.llm_decoder(y_pred[:, -1].to(torch.float32))
-            top_ids = self.sampling(logits, out_tokens)
+            logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
+            top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
+                                        sampling,
+                                        ignore_eos=True if i < min_len else False).item()
+            # logits = self.llm_decoder(y_pred[:, -1].to(torch.float32))
+            # top_ids = self.sampling(logits, out_tokens)
 
             if top_ids == self.speech_token_size:
                 break
