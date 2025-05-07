@@ -142,12 +142,17 @@ def main():
                 saved_state_dict = saved_state_dict['generator']
 
             new_state_dict = {}
-            if gan and 'generator.m_source.l_linear.weight' not in saved_state_dict and 'generator.input_embedding.weight' not in saved_state_dict:
-                # 模型参数只保存了generator
-                dest_model = model.generator
-                logging.warning('discriminator is not pretrained!')
-            else:
-                dest_model = model
+            dest_model = model
+            if gan:
+                has_disc = False
+                for key in saved_state_dict:
+                    if key.startswith('discriminator'):
+                        has_disc = True
+                        break
+                if not has_disc:
+                    # 模型参数只保存了generator
+                    dest_model = model.generator
+                    logging.warning('discriminator is not pretrained!')
 
             for k, v in dest_model.state_dict().items():
                 if k not in saved_state_dict:

@@ -2,9 +2,11 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import cosyvoice.speaker.commons as commons
 from cosyvoice.hifigan.discriminator import \
     feature_loss, generator_loss, discriminator_loss
-from cosyvoice.utils.losses import tpr_loss, mel_loss
+from cosyvoice.utils.losses import tpr_loss, mel_loss, kl_loss
 
 
 class HiFiGan(nn.Module):
@@ -41,9 +43,19 @@ class HiFiGan(nn.Module):
         generated_speech, generated_f0 = self.generator(batch, device)
 
         loss_mel_recon = torch.tensor(0.0, dtype=torch.float32, device=device)
+        loss_kl = torch.tensor(0.0, dtype=torch.float32, device=device)
         if isinstance(generated_f0, tuple):
-            generated_mel, generated_f0 = generated_f0
-            loss_mel_recon = F.mse_loss(generated_mel, mel_feat, reduction="sum")
+            if self.generator.__class__.__name__.startswith("BigVGAN"):
+                generated_mel, generated_f0 = generated_f0
+                loss_mel_recon = F.mse_loss(generated_mel, mel_feat, reduction="sum")
+            elif self.generator.__class__.__name__.startswith("VitsDecoder"):
+                (ids_slice, x_mask, y_mask, z, z_p, m_p, logs_p, m_q, logs_q) = generated_f0
+                real_speech = commons.slice_segments(
+                    real_speech.unsqueeze(1), ids_slice * self.generator.hop_length,
+                    self.generator.segment_size).squeeze(1)
+                generated_speech = generated_speech.squeeze(1)
+
+                loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, y_mask)
 
         # 2. calculate discriminator outputs
         y_d_rs, y_d_gs, fmap_rs, fmap_gs = self.discriminator(real_speech, generated_speech)
@@ -60,15 +72,25 @@ class HiFiGan(nn.Module):
             loss_f0 = F.l1_loss(generated_f0, pitch_feat)
         loss = loss_gen + self.feat_match_loss_weight * loss_fm + \
             self.multi_mel_spectral_recon_loss_weight * loss_mel + \
-            self.tpr_loss_weight * loss_tpr + loss_f0 + loss_mel_recon
-        return {'loss': loss, 'loss_gen': loss_gen, 'loss_fm': loss_fm, 'loss_mel': loss_mel,
-                'loss_tpr': loss_tpr, 'loss_f0': loss_f0, "loss_mel_recon": loss_mel_recon, }
+            self.tpr_loss_weight * loss_tpr + loss_f0 + loss_mel_recon + loss_kl
+        return {'loss': loss, 'loss_gen': loss_gen, 'loss_fm': loss_fm,
+                'loss_mel': loss_mel, 'loss_tpr': loss_tpr, 'loss_f0': loss_f0,
+                "loss_mel_recon": loss_mel_recon, "loss_kl": loss_kl, }
 
     def forward_discriminator(self, batch, device):
         real_speech = batch['speech'].to(device)
         # 1. calculate generator outputs
         with torch.no_grad():
             generated_speech, generated_f0 = self.generator(batch, device)
+
+        if self.generator.__class__.__name__.startswith("VitsDecoder"):
+            (ids_slice, x_mask, y_mask, z, z_p, m_p, logs_p, m_q,
+             logs_q) = generated_f0
+            real_speech = commons.slice_segments(
+                real_speech.unsqueeze(1), ids_slice * self.generator.hop_length,
+                self.generator.segment_size).squeeze(1)
+            generated_speech = generated_speech.squeeze(1)
+
         # 2. calculate discriminator outputs
         y_d_rs, y_d_gs, fmap_rs, fmap_gs = self.discriminator(real_speech, generated_speech)
         # 3. calculate discriminator losses, tpr losses [Optional]

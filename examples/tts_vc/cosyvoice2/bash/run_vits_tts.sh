@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2024 Alibaba Inc. All Rights Reserved.
+
 . ./path.sh || exit 1;
 
 stage=0
@@ -13,9 +13,9 @@ dist_backend="nccl"
 num_workers=1
 prefetch=100
 train_engine=torch_ddp
-exp_name=llm_pho_yhcodec_31w_tts
-exp_conf=cosyvoice_yhcodec_tts
-portnum=3000
+exp_name=vits_tts
+exp_conf=cosyvoice_vits_tts
+portnum=2301
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
@@ -33,14 +33,14 @@ run_command() {
       --timeout  60    \
       --train_engine $train_engine \
       --config conf/$exp_conf.yaml \
-      --model llm \
+      --model hifigan \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/$model \
       --tensorboard_dir `pwd`/tensorboard/$model \
       --ddp.dist_backend $dist_backend \
       --num_workers ${num_workers} \
       --prefetch ${prefetch} \
-      --pin_memory  \
+      --pin_memory \
       --deepspeed_config ./conf/ds_stage2.json \
       --deepspeed.save_states model+optimizer
   done
