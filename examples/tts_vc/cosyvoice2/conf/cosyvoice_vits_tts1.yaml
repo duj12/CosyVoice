@@ -23,27 +23,9 @@ use_pause_label: False  # whether use human labeled or MFA aligned pause labels
 need_text: False  # whether dataset need text
 
 # model params
-upsample_encoder: !new:cosyvoice.transformer.upsample_encoder.UpsampleConformerEncoder
-    output_size: 512
-    attention_heads: 8
-    linear_units: 2048
-    num_blocks: 2
-    dropout_rate: 0.1
-    positional_dropout_rate: 0.1
-    attention_dropout_rate: 0.1
-    normalize_before: True
-    input_layer: 'linear'
-    pos_enc_layer_type: 'rel_pos_espnet'
-    selfattention_layer_type: 'rel_selfattn'
-    input_size: 512
-    use_cnn_module: False
-    macaron_style: False
-
 vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     n_vocab: 6561   # input 25Hz codec
-    up_enc1: !ref <upsample_encoder>   # 2 x upsample
-    up_enc2: !ref <upsample_encoder>   # 2 x upsample
-    token_upsample_ratio: 4
+    token_upsample_ratio: 1
     spec_channels: 513                 # default spectrum bins
     "inter_channels": 512
     "hidden_channels": 512
@@ -56,12 +38,12 @@ vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     "resblock_kernel_sizes": [3, 7, 11]
     "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]]
     "upsample_initial_channel": 512
-    upsample_rates: [8, 5, 3, 2]     # 240 x upsample
-    upsample_kernel_sizes: [16, 11, 7, 2]
+    upsample_rates: [8, 5, 3, 8]     # 240*4 x upsample
+    upsample_kernel_sizes: [16, 11, 7, 16]
     "n_layers_q": 3
     "use_spectral_norm": false
     "gin_channels": 512
-    "segment_size": 9600
+    "segment_size": 19200
 
 llm:
 
@@ -70,11 +52,11 @@ flow:
 
 # gan related module
 mel_spec_transform1: !name:cosyvoice.dataset.processor_kaldidata.mel_spectrogram
-    n_fft: 480
+    n_fft: 1024
     num_mels: 80
     sampling_rate: !ref <sample_rate>
     hop_size: 240
-    win_size: 480
+    win_size: 1024
     fmin: 0
     fmax: null
     center: False
@@ -96,13 +78,13 @@ filter: !name:cosyvoice.dataset.processor_kaldidata.filter
 resample: !name:cosyvoice.dataset.processor_kaldidata.resample
     resample_rate: !ref <sample_rate>
 truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
-    truncate_length: 240000  # must be a multiplier of hop_size, 10s wave
+    truncate_length: 240000  # must be a multiplier of hop_size
 
 # vits 中后验编码使用线性谱作为输入
 feat_extractor: !name:cosyvoice.speaker.mel_processing.spectrogram_torch
     n_fft: 1024
     sampling_rate: !ref <sample_rate>
-    hop_size: 240
+    hop_size: 960
     win_size: 1024
     center: False
 compute_fbank: !name:cosyvoice.dataset.processor_kaldidata.compute_fbank

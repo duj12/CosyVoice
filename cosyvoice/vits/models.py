@@ -49,10 +49,14 @@ class TextEncoder(nn.Module):
 
     def forward(self, x, x_lengths):
         x = self.emb(x) * math.sqrt(self.hidden_channels)  # [b, t, h]
-        x, _ = self.up_enc1(x, x_lengths)   # upsample * 2
-        x, _ = self.up_enc2(x, x_lengths*2)   # upsample * 2
+        if self.up_enc1 is not None:
+            x, _ = self.up_enc1(x, x_lengths)   # upsample * 2
+            x_lengths = x_lengths * 2
+        if self.up_enc2 is not None:
+            x, _ = self.up_enc2(x, x_lengths)   # upsample * 2
+            x_lengths = x_lengths * 2
         x = torch.transpose(x, 1, -1)  # [b, h, t]
-        x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths*4, x.size(2)),
+        x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)),
                                  1).to(x.dtype)
 
         x = self.encoder(x * x_mask, x_mask)
@@ -218,6 +222,7 @@ class VitsDecoder(nn.Module):
                  gin_channels=512,
                  sample_rate=24000,
                  frame_rate=25,
+                 token_upsample_ratio=4,
                  up_enc1=None,
                  up_enc2=None,
                  **kwargs):
@@ -242,7 +247,7 @@ class VitsDecoder(nn.Module):
         self.gin_channels = gin_channels
         self.sample_rate = sample_rate
         self.frame_rate = frame_rate    # 25
-        self.token_upsample_ratio = 4   # fixed 4x upsample of codec
+        self.token_upsample_ratio = token_upsample_ratio   # upsample of codec
         self.hop_length = self.sample_rate // self.frame_rate // self.token_upsample_ratio
 
         self.enc_p = TextEncoder(n_vocab, inter_channels, hidden_channels,
@@ -281,7 +286,7 @@ class VitsDecoder(nn.Module):
         x, x_lengths = token, token_len
         y, y_lengths = feat, feat_len
 
-        x, m_p, logs_p, x_mask = self.enc_p(x, x_lengths)  # 4x upsample and encode
+        x, m_p, logs_p, x_mask = self.enc_p(x, x_lengths)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
         z_p = self.flow(z, y_mask, g=g)
         z_slice, ids_slice = commons.rand_slice_segments(
@@ -290,8 +295,78 @@ class VitsDecoder(nn.Module):
         return o, (ids_slice, x_mask, y_mask, z, z_p, m_p, logs_p, m_q, logs_q)
 
     def inference(self, x, x_lengths, g, noise_scale=0.5, max_len=None):
+        g = g.unsqueeze(-1)    # B D 1
         x, m_p, logs_p, x_mask = self.enc_p(x, x_lengths)
         z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
         z = self.flow(z_p, x_mask, g=g, reverse=True)
         o = self.dec((z * x_mask)[:, :, :max_len], g=g)
         return o
+
+
+
+if __name__ == '__main__':
+    """直接使用s3tokenizer得到的codec作为输入，以说话人向量作为condition，重建音频
+    """
+    import os
+    import librosa
+    import soundfile as sf
+    import s3tokenizer
+    import torchaudio
+    from hyperpyyaml import load_hyperpyyaml
+    from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
+
+    config_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/conf/cosyvoice_vits_tts.yaml"
+    with open(config_path, 'r') as f:
+        configs = load_hyperpyyaml(f, overrides={})
+    vitsdecoder = configs['vitsdecoder'].cuda()
+
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_26_step_90000.pt"
+    state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
+    vitsdecoder.load_state_dict(state_dict, strict=False)
+
+    wav_path = "/data/megastore/SHARE/TTS/ref_audios/caikangyong_10s.wav"
+    name = os.path.basename(wav_path).split('.')[0]
+    wave = torch.from_numpy(
+        librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
+
+    speech_tokenzier = s3tokenizer.load_model(
+            "speech_tokenizer_v2_25hz", "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/s3tokenizer/").cuda()
+    def wav2token(speech_tokenzier, waves_padded, sr_in=24000, wave_lengths=None):
+        '''
+            waves_padded: B T
+        '''
+        if not wave_lengths:
+            wave_lengths = torch.LongTensor(1).to(waves_padded.device)
+            wave_lengths[0] = waves_padded.size(-1)
+        mels = []
+        batch_size = waves_padded.size(0)
+        for i in range(batch_size):
+            audio = waves_padded[i, :wave_lengths[i]]
+            # whisper speech code use 16k sample_rate
+            if sr_in != 16000:
+                resampler = torchaudio.transforms.Resample(
+                    sr_in, 16000).to(audio.device)
+                audio = resampler(audio)
+            mels.append(s3tokenizer.log_mel_spectrogram(audio))
+        mels, mels_lens = s3tokenizer.padding(mels)
+        mels = mels.to(waves_padded.device)
+        mels_lens = mels_lens.to(waves_padded.device)
+        speech_code, speech_code_len = speech_tokenzier.quantize(
+            mels, mels_lens)
+        return speech_code, speech_code_len
+
+    speaker_encoder = SpeakerEmbedding(ckpt_path="/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/SpeakerEncoder/speaker_encoder_v2.pt").cuda()
+    def wav2spkemb(speaker_encoder, waves_padded):
+        wave_lengths = torch.LongTensor(1).to(waves_padded.device)
+        wave_lengths[0] = waves_padded.size(-1)
+        speaker_embedding = speaker_encoder(waves_padded, wave_lengths)
+        return speaker_embedding
+
+    with torch.no_grad():
+        speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
+        speaker_emb = wav2spkemb(speaker_encoder, wave)
+        audio = vitsdecoder.inference(speech_token, speech_code_len, speaker_emb).squeeze(1)
+        print(f"input: {wave.size()} recon: {audio.size()}")
+
+    save_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/test_vits.wav"
+    sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)
