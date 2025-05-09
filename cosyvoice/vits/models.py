@@ -289,6 +289,10 @@ class VitsDecoder(nn.Module):
         x, m_p, logs_p, x_mask = self.enc_p(x, x_lengths)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
         z_p = self.flow(z, y_mask, g=g)
+
+        min_length = torch.min(y_lengths).item()
+        if self.segment_size//self.hop_length > min_length:
+            self.segment_size = min_length * self.hop_length
         z_slice, ids_slice = commons.rand_slice_segments(
             z, y_lengths, self.segment_size//self.hop_length)
         o = self.dec(z_slice, g=g)

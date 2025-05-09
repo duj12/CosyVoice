@@ -47,7 +47,7 @@ class HiFiGan(nn.Module):
         if isinstance(generated_f0, tuple):
             if self.generator.__class__.__name__.startswith("BigVGAN"):
                 generated_mel, generated_f0 = generated_f0
-                loss_mel_recon = F.mse_loss(generated_mel, mel_feat, reduction="sum")
+                loss_mel_recon = F.mse_loss(generated_mel, mel_feat, reduction="mean")
             elif self.generator.__class__.__name__.startswith("VitsDecoder"):
                 (ids_slice, x_mask, y_mask, z, z_p, m_p, logs_p, m_q, logs_q) = generated_f0
                 real_speech = commons.slice_segments(

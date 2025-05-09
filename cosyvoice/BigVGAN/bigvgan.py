@@ -256,8 +256,6 @@ class BigVGAN(
 
     def __init__(
             self,
-            encoder1,
-            encoder2,
             vocab_size=6561,
             input_size=512,
             output_size=1024,
@@ -272,15 +270,22 @@ class BigVGAN(
             cond_d_vector_in_each_upsampling_layer=True,
             activation="snakebeta",
             snake_logscale=True,
-            use_cuda_kernel: bool=False
+            use_cuda_kernel: bool=False,
+            encoder1=None,
+            encoder2=None,
 
     ):
         super().__init__()
         self.input_embedding = nn.Embedding(vocab_size, input_size)
         self.encoder1 = encoder1
         self.encoder2 = encoder2
-        self.encoder_proj = torch.nn.Linear(self.encoder2.output_size(), output_size)
-        self.mel_proj = torch.nn.Linear(self.encoder2.output_size(), mel_bin)
+        if self.encoder2 is not None:
+            self.encoder_proj = torch.nn.Linear(self.encoder2.output_size(), output_size)
+            self.mel_proj = torch.nn.Linear(self.encoder2.output_size(), mel_bin)
+        else:
+            self.encoder_proj = torch.nn.Linear(input_size, output_size)
+            self.mel_proj = torch.nn.Linear(upsample_initial_channel, mel_bin)
+
         self.speaker_dim = speaker_embedding_dim
         self.use_cuda_kernel = use_cuda_kernel
 
@@ -384,18 +389,25 @@ class BigVGAN(
         speaker_embedding = batch['embedding'].unsqueeze(-1).to(device)
 
         mask = (~make_pad_mask(token_len)).float().unsqueeze(-1).to(device)
-        token = self.input_embedding(torch.clamp(token, min=0)) * mask
+        x = self.input_embedding(torch.clamp(token, min=0)) * mask
 
         # encoding and upsample speech token into feature
-        x, x_lengths = self.encoder1(token, token_len)   # upsample * 2
-        x, x_lengths = self.encoder2(x, token_len*2)       # upsample * 2
+        if self.encoder1 is not None:
+            x, _ = self.encoder1(x, token_len)   # upsample * 2
+            token_len = token_len * 2
+        if self.encoder2 is not None:
+            x, _ = self.encoder2(x, token_len)       # upsample * 2
+            token_len = token_len * 2
+            mel_feat_out = self.mel_proj(x)            # B T D
 
-        mel_feat_out = self.mel_proj(x)            # B T D
         x = self.encoder_proj(x).transpose(1, 2)   # B D T
         # BigVGAN
         # Pre-conv
         x = self.conv_pre(x)
         x = x + self.cond_layer(speaker_embedding)
+
+        if self.encoder2 is None:
+            mel_feat_out = self.mel_proj(x.transpose(1,2))  # B D T
 
         for i in range(self.num_upsamples):
             # Upsampling

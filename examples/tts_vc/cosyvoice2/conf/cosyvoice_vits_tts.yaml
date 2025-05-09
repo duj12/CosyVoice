@@ -61,7 +61,7 @@ vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     "n_layers_q": 3
     "use_spectral_norm": false
     "gin_channels": 512
-    "segment_size": 9600
+    "segment_size": 48000
 
 llm:
 

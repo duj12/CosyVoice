@@ -1,21 +1,21 @@
 #!/bin/bash
-
+# Copyright 2024 Alibaba Inc. All Rights Reserved.
 . ./path.sh || exit 1;
 
 stage=0
 stop_stage=0
 
 # train llm_pho
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
+export CUDA_VISIBLE_DEVICES="4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
 num_workers=4
 prefetch=100
 train_engine=torch_ddp
-exp_name=vits_tts
-exp_conf=cosyvoice_vits_tts
-portnum=2301
+exp_name=bigvgan_tts1
+exp_conf=cosyvoice_bigvgan_tts1
+portnum=2302
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
