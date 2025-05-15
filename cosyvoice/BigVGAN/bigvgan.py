@@ -471,11 +471,6 @@ if __name__ == '__main__':
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     bigvgan.load_state_dict(state_dict, strict=False)
 
-    wav_path = "/data/megastore/SHARE/TTS/ref_audios/caikangyong_10s.wav"
-    name = os.path.basename(wav_path).split('.')[0]
-    wave = torch.from_numpy(
-        librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
-
     speech_tokenzier = s3tokenizer.load_model(
             "speech_tokenizer_v2_25hz", "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/s3tokenizer/").cuda()
     def wav2token(speech_tokenzier, waves_padded, sr_in=24000, wave_lengths=None):
@@ -510,10 +505,18 @@ if __name__ == '__main__':
         return speaker_embedding
 
     with torch.no_grad():
-        speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
-        speaker_emb = wav2spkemb(speaker_encoder, wave)
-        audio, _ = bigvgan.forward({"speech_token":speech_token,
-                                 "speech_token_len":speech_code_len,
-                                 "embedding":speaker_emb}, device=wave.device)
-        print(f"input: {wave.size()} recon: {audio.size()}")
-    sf.write(f"test.wav", audio[0].cpu().detach().numpy(), 24000)
+        test_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test"
+        save_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test_result"
+        for file in os.listdir(test_dir):
+            name = os.path.splitext(file)[0]
+            wav_path = os.path.join(test_dir, file)
+            wave = torch.from_numpy(
+                librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
+            speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
+            speaker_emb = wav2spkemb(speaker_encoder, wave)
+            audio, _ = bigvgan.forward({"speech_token":speech_token,
+                                     "speech_token_len":speech_code_len,
+                                     "embedding":speaker_emb}, device=wave.device)
+            print(f"input: {wave.size()} recon: {audio.size()}")
+            save_path = f"{save_dir}/{name}_bvgan.wav"
+            sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)

@@ -324,14 +324,9 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_26_step_90000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_43_step_320000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
-
-    wav_path = "/data/megastore/SHARE/TTS/ref_audios/caikangyong_10s.wav"
-    name = os.path.basename(wav_path).split('.')[0]
-    wave = torch.from_numpy(
-        librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
 
     speech_tokenzier = s3tokenizer.load_model(
             "speech_tokenizer_v2_25hz", "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/s3tokenizer/").cuda()
@@ -367,10 +362,17 @@ if __name__ == '__main__':
         return speaker_embedding
 
     with torch.no_grad():
-        speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
-        speaker_emb = wav2spkemb(speaker_encoder, wave)
-        audio = vitsdecoder.inference(speech_token, speech_code_len, speaker_emb).squeeze(1)
-        print(f"input: {wave.size()} recon: {audio.size()}")
+        test_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test"
+        save_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test_result"
+        for file in os.listdir(test_dir):
+            name = os.path.splitext(file)[0]
+            wav_path = os.path.join(test_dir, file)
+            wave = torch.from_numpy(
+                librosa.load(wav_path, sr=24000)[0]).unsqueeze(0).cuda()  # B T
 
-    save_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/test_vits.wav"
-    sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)
+            speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
+            speaker_emb = wav2spkemb(speaker_encoder, wave)
+            audio = vitsdecoder.inference(speech_token, speech_code_len, speaker_emb).squeeze(1)
+            print(f"input: {wave.size()} recon: {audio.size()}")
+            save_path = f"{save_dir}/{name}_vits.wav"
+            sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)
