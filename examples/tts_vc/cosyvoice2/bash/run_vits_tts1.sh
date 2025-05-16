@@ -13,8 +13,8 @@ dist_backend="nccl"
 num_workers=1
 prefetch=100
 train_engine=torch_ddp
-exp_name=vits_tts1
-exp_conf=cosyvoice_vits_tts1
+exp_name=vits_tts2
+exp_conf=cosyvoice_vits_tts2
 portnum=2302
 pretrained_model_dir=exp/$exp_name
 

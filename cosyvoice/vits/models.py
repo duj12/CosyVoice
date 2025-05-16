@@ -22,7 +22,8 @@ class TextEncoder(nn.Module):
                  kernel_size,
                  p_dropout,
                  up_enc1=None,
-                 up_enc2=None):
+                 up_enc2=None,
+                 upsample_first=True):
         super().__init__()
         self.n_vocab = n_vocab
         self.out_channels = out_channels
@@ -45,21 +46,37 @@ class TextEncoder(nn.Module):
             p_dropout)
         self.up_enc1 = up_enc1
         self.up_enc2 = up_enc2
+        self.upsample_first = upsample_first   # True表示encode在upsample之后
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
     def forward(self, x, x_lengths):
         x = self.emb(x) * math.sqrt(self.hidden_channels)  # [b, t, h]
-        if self.up_enc1 is not None:
-            x, _ = self.up_enc1(x, x_lengths)   # upsample * 2
-            x_lengths = x_lengths * 2
-        if self.up_enc2 is not None:
-            x, _ = self.up_enc2(x, x_lengths)   # upsample * 2
-            x_lengths = x_lengths * 2
+        if self.upsample_first:
+            if self.up_enc1 is not None:
+                x, _ = self.up_enc1(x, x_lengths)   # upsample * 2
+                x_lengths = x_lengths * 2
+            if self.up_enc2 is not None:
+                x, _ = self.up_enc2(x, x_lengths)   # upsample * 2
+                x_lengths = x_lengths * 2
         x = torch.transpose(x, 1, -1)  # [b, h, t]
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)),
                                  1).to(x.dtype)
 
         x = self.encoder(x * x_mask, x_mask)
+        if not self.upsample_first:
+            if self.up_enc1 is not None:
+                x = x.transpose(1, 2)  # [b, t, h]
+                x, _ = self.up_enc1(x, x_lengths)   # upsample * 2
+                x_lengths = x_lengths * 2
+                x_mask = torch.unsqueeze(commons.sequence_mask(
+                    x_lengths, x.size(2)), 1).to(x.dtype)
+            if self.up_enc2 is not None:
+                x, _ = self.up_enc2(x, x_lengths)   # upsample * 2
+                x_lengths = x_lengths * 2
+                x = x.transpose(1, 2)  # [b, h, t]
+                x_mask = torch.unsqueeze(commons.sequence_mask(
+                    x_lengths, x.size(2)), 1).to(x.dtype)
+
         stats = self.proj(x) * x_mask
 
         m, logs = torch.split(stats, self.out_channels, dim=1)
@@ -225,6 +242,7 @@ class VitsDecoder(nn.Module):
                  token_upsample_ratio=4,
                  up_enc1=None,
                  up_enc2=None,
+                 upsample_first=True,
                  **kwargs):
 
         super().__init__()
@@ -253,7 +271,8 @@ class VitsDecoder(nn.Module):
         self.enc_p = TextEncoder(n_vocab, inter_channels, hidden_channels,
                                  filter_channels, n_heads, n_layers,
                                  kernel_size, p_dropout,
-                                 up_enc1=up_enc1, up_enc2=up_enc2)
+                                 up_enc1=up_enc1, up_enc2=up_enc2,
+                                 upsample_first=upsample_first)
 
         self.dec = Generator(inter_channels, resblock, resblock_kernel_sizes,
                              resblock_dilation_sizes, upsample_rates,
@@ -324,7 +343,7 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_43_step_320000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_43_step_330000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
 
