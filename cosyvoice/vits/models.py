@@ -343,7 +343,7 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_43_step_330000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_44_step_470000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
 

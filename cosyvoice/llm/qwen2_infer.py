@@ -1,9 +1,11 @@
 import os
 import json
 import torch
-from torch import nn
+import transformers
 import torch.nn.functional as F
 from copy import deepcopy
+from torch import nn
+from packaging import version
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
 from typing import Callable, List, Generator, Tuple
 from torch.nn.utils.rnn import pad_sequence, unpad_sequence
@@ -17,15 +19,20 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 class Qwen2Encoder(torch.nn.Module):
     def __init__(self, pretrain_path, max_cache_len):
         super().__init__()
+        self.qwenversion = "2.5" if "3" not in pretrain_path else "3"
+        model_class = Qwen2ForCausalLM  # if self.qwenversion == "2.5" else Qwen3ForCausalLM
+
         if os.path.exists(f"{pretrain_path}/model.safetensors"):
-            self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path, max_cache_len)
+            self.model = model_class.from_pretrained(pretrain_path,
+                                                     max_cache_len)
         else:
             config_dict = json.load(open(f"{pretrain_path}/config.json"))
-            config = Qwen2Config(**config_dict)
-            self.model = Qwen2ForCausalLM(config, max_cache_len)
+            config = Qwen2Config(attn_implementation='sdpa', **config_dict)
+            self.model = model_class(config, max_cache_len, )
 
     def forward_one_step(self, xs, masks, cache=None):
         outs = self.model(
@@ -39,77 +46,65 @@ class Qwen2Encoder(torch.nn.Module):
         xs = outs.hidden_states[-1]
         new_cache = outs.past_key_values
         return xs, new_cache
-    
+
+
 class Qwen2EncoderInfer(Qwen2Encoder):
-    def __init__(self, pretrain_path, max_cache_len=5000, dtype = torch.bfloat16):
-        Qwen2Encoder.__init__(self,pretrain_path,max_cache_len)
-        self.graph = torch.cuda.CUDAGraph()
+    def __init__(self, pretrain_path, max_cache_len=5000, dtype=torch.bfloat16):
+        Qwen2Encoder.__init__(self, pretrain_path, max_cache_len)
         self.dtype = dtype
-        self.qwen_token_embed = deepcopy(self.model.model.embed_tokens)
-        # self.model = torch.compile(self.model, mode='max-autotune-no-cudagraphs',
-        #                       fullgraph=True, dynamic=False,
-        #                       backend='cudagraphs')
+        self.qwen_token_embed = deepcopy(self.model.model.embed_tokens)  # 这个embed模块还是保持fp32
         self.model.to(self.dtype)
-        
+
     @torch.inference_mode()
     def prefill(self, xs):
-        #xs:(b,t,c), cache:(None)
+        # xs:(b,t,c), cache:(None)
         y, cache = self.model(inputs_embeds=xs, cache=None)
         return y, cache, torch.LongTensor([xs.shape[1]]).cuda()
-    
+
     @torch.inference_mode()
-    @torch.amp.autocast('cuda',dtype=torch.bfloat16)
+    @torch.amp.autocast('cuda', dtype=torch.bfloat16)
     def forward_one_step(self, xs, cache, cache_position):
         if cache == None:
-            xs = xs.bfloat16()
-            #first step
+            xs = xs.to(self.dtype)
+            # first step
             return self.prefill(xs)
         else:
             return self.decode(xs, cache, cache_position)
             # y, cache = self.model(inputs_embeds=xs, cache=cache,cache_position=cache_position)
             # return y, cache, cache_position+1
-    
+
     @torch.inference_mode()
     def forward(self, xs, cache, cache_position):
-        return self.model(inputs_embeds=xs, cache=cache,cache_position=cache_position)
-    
+        return self.model(inputs_embeds=xs, cache=cache,
+                          cache_position=cache_position)
+
     @torch.inference_mode()
-    def warmup(self, ):
-        logger.info("######################Warming up...######################")
-        # print(self.dtype)
-        y, cache, cache_pos = self.prefill(torch.rand(1, 100, 896,dtype=self.dtype,device='cuda'))
-        self.static_in = torch.rand(1, 1, 896,dtype=self.dtype,device='cuda')
-        self.static_cache_in = deepcopy(cache)
-        self.static_cache_pos_in = torch.LongTensor([100]).cuda()
-        
-        self.static_cache_out = deepcopy(cache)
-        self.static_out = torch.rand(1, 1,896,dtype=self.dtype,device='cuda')
-        curlen = 100
-        with torch.cuda.graph(self.graph):
-            y, cache = self.forward(self.static_in, self.static_cache_in,self.static_cache_pos_in)
-            self.static_out.copy_(y[:,-1:,:])
-            self.copy_cache(cache, self.static_cache_out)
-        logger.info("######################Warmup done.######################")
-    
+    def warmup(self, hidden_size=896):
+        self.model.warmup()
+
     def copy_cache(self, source, target):
-        for id in range(24):
+        # 新版transformers>=4.51.0的逻辑
+        # for id in range(len(source.key_cache)):
+
+        # 旧版transformers<4.51.0的逻辑
+        for id in range(len(source.key_cache)):
             target.key_cache[id].copy_(source.key_cache[id])
             target.value_cache[id].copy_(source.value_cache[id])
-            getattr(target,f"key_cache_{id}").copy_(getattr(source,f"key_cache_{id}"))
-            getattr(target,f"value_cache_{id}").copy_(getattr(source,f"value_cache_{id}"))
+            if version.Version(transformers.__version__) < version.Version(
+                    "4.51.0"):
+                getattr(target, f"key_cache_{id}").copy_(
+                    getattr(source, f"key_cache_{id}"))
+                getattr(target, f"value_cache_{id}").copy_(
+                    getattr(source, f"value_cache_{id}"))
 
-    @torch.inference_mode()    
+    @torch.inference_mode()
     def decode(self, xs, cache, cache_pos):
-        #逐帧推理
-        self.static_in.copy_(xs)
-        self.copy_cache(cache, self.static_cache_in)
-        self.static_cache_pos_in.copy_(cache_pos)
-        self.graph.replay()
-        return self.static_out, self.static_cache_out, cache_pos+1
-    
+        y, cache = self.model.forward(graph=True, inputs_embeds=xs, cache=cache)
+        return y, cache, cache_pos + 1
+
     def to(self):
         self.model.to(self.dtype)
-        
+
 
 class Qwen2LM_Phoneme_Infer(torch.nn.Module):
     '''
