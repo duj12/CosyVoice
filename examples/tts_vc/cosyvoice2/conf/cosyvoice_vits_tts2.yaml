@@ -38,6 +38,7 @@ upsample_encoder: !new:cosyvoice.transformer.upsample_encoder.UpsampleConformerE
     input_size: 512
     use_cnn_module: False
     macaron_style: False
+    use_dynamic_chunk: True
 
 vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     n_vocab: 6561   # input 25Hz codec
@@ -45,6 +46,7 @@ vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     up_enc2: !ref <upsample_encoder>   # 2 x upsample
     upsample_first: False              # upsample 放在 encode 之后
     token_upsample_ratio: 4
+    use_dynamic_chunk: True
     spec_channels: 513                 # default spectrum bins
     "inter_channels": 512
     "hidden_channels": 512
@@ -362,11 +364,11 @@ train_data: [
 
 ]
 
-train_data_indexes0: [
+train_data_indexes: [
     [0,1,2,3,4,5]
 ]
 
-train_data_indexes: [
+train_data_indexes1: [
     [ 0,1,2,3,4,5 ],
     [41,42], [43,44], [45,46], [47,48], [49,50],
     [51,52], [53,54], [55,56], [57,58], [59,60],

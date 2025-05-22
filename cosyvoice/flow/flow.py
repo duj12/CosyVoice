@@ -256,6 +256,7 @@ class CausalMaskedDiffWithXvec(torch.nn.Module):
 
 
     @torch.inference_mode()
+    # @torch.amp.autocast('cuda', dtype=torch.bfloat16)  # 使用flash-attn时需启用
     def inference(self,
                   token,
                   token_len,

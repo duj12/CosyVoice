@@ -9,7 +9,10 @@ import cosyvoice.vits.attentions as attentions
 import cosyvoice.speaker.modules as modules
 import cosyvoice.speaker.commons as commons
 from cosyvoice.speaker.commons import init_weights
+from cosyvoice.utils.mask import add_optional_chunk_mask
+import logging
 
+logger = logging.getLogger(__name__)
 
 class TextEncoder(nn.Module):
     def __init__(self,
@@ -23,7 +26,8 @@ class TextEncoder(nn.Module):
                  p_dropout,
                  up_enc1=None,
                  up_enc2=None,
-                 upsample_first=True):
+                 upsample_first=True,
+                 use_dynamic_chunk=False):
         super().__init__()
         self.n_vocab = n_vocab
         self.out_channels = out_channels
@@ -47,6 +51,9 @@ class TextEncoder(nn.Module):
         self.up_enc1 = up_enc1
         self.up_enc2 = up_enc2
         self.upsample_first = upsample_first   # True表示encode在upsample之后
+        self.use_dynamic_chunk = use_dynamic_chunk
+        logger.info(f"upsample_first: {upsample_first}, use_dynamic_chunk: {use_dynamic_chunk}")
+
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
     def forward(self, x, x_lengths):
@@ -61,8 +68,16 @@ class TextEncoder(nn.Module):
         x = torch.transpose(x, 1, -1)  # [b, h, t]
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)),
                                  1).to(x.dtype)
+        attn_mask = None
+        if self.use_dynamic_chunk and self.training:
+            attn_mask = add_optional_chunk_mask(
+                x.transpose(1, 2), x_mask.bool(), self.use_dynamic_chunk,
+                use_dynamic_left_chunk=False, decoding_chunk_size=0,
+                static_chunk_size=0, num_decoding_left_chunks=-1,
+                max_dynamic_chunk_size=100, enable_full_context=False,
+            ).unsqueeze(1)  # 升采样后帧率100  B 1 4T 4T
 
-        x = self.encoder(x * x_mask, x_mask)
+        x = self.encoder(x * x_mask, x_mask, attn_mask=attn_mask)
         if not self.upsample_first:
             if self.up_enc1 is not None:
                 x = x.transpose(1, 2)  # [b, t, h]
@@ -243,6 +258,7 @@ class VitsDecoder(nn.Module):
                  up_enc1=None,
                  up_enc2=None,
                  upsample_first=True,
+                 use_dynamic_chunk=False,
                  **kwargs):
 
         super().__init__()
@@ -272,7 +288,8 @@ class VitsDecoder(nn.Module):
                                  filter_channels, n_heads, n_layers,
                                  kernel_size, p_dropout,
                                  up_enc1=up_enc1, up_enc2=up_enc2,
-                                 upsample_first=upsample_first)
+                                 upsample_first=upsample_first,
+                                 use_dynamic_chunk=use_dynamic_chunk)
 
         self.dec = Generator(inter_channels, resblock, resblock_kernel_sizes,
                              resblock_dilation_sizes, upsample_rates,
@@ -341,9 +358,9 @@ if __name__ == '__main__':
     config_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/conf/cosyvoice_vits_tts.yaml"
     with open(config_path, 'r') as f:
         configs = load_hyperpyyaml(f, overrides={})
-    vitsdecoder = configs['vitsdecoder'].cuda()
+    vitsdecoder = configs['vitsdecoder'].cuda().eval()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_44_step_470000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_52_step_600000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
 
@@ -380,6 +397,44 @@ if __name__ == '__main__':
         speaker_embedding = speaker_encoder(waves_padded, wave_lengths)
         return speaker_embedding
 
+
+    def stream_inference(vitsdecoder, speech_token, speaker_emb, chunk_size=60, overlap_size=10, hop_length=960):
+        # 分块
+        B, T = speech_token.shape
+        chunks = []
+        start = 0
+        while start < T:
+            end = start + chunk_size
+            if end > T:
+                end = T
+            chunks.append((start, end))
+            start += (chunk_size - overlap_size)
+
+        # 逐块推理
+        audio_segments = []
+        for i, (start_idx, end_idx) in enumerate(chunks):
+            current_chunk = speech_token[:, start_idx:end_idx]
+            current_len = end_idx - start_idx
+            chunk_code_len = torch.tensor([current_len],
+                                          device=speech_token.device)
+            chunk_audio = vitsdecoder.inference(current_chunk, chunk_code_len,
+                                                speaker_emb).squeeze(1)
+
+            if i == 0:
+                audio_segments.append(chunk_audio)
+            else:
+                overlap_audio = overlap_size * hop_length
+                if chunk_audio.size(1) > overlap_audio:
+                    audio_segments.append(chunk_audio[:, overlap_audio:])
+                else:
+                    audio_segments.append(chunk_audio)
+
+        # 合并音频
+        final_audio = torch.cat(audio_segments,
+                                dim=1) if audio_segments else torch.zeros(
+            (B, 0), device=speech_token.device)
+        return final_audio
+
     with torch.no_grad():
         test_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test"
         save_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test_result"
@@ -392,6 +447,10 @@ if __name__ == '__main__':
             speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
             speaker_emb = wav2spkemb(speaker_encoder, wave)
             audio = vitsdecoder.inference(speech_token, speech_code_len, speaker_emb).squeeze(1)
+            audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 50,10)
             print(f"input: {wave.size()} recon: {audio.size()}")
             save_path = f"{save_dir}/{name}_vits.wav"
             sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)
+            audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 60, 10)
+            save_path = f"{save_dir}/{name}_vits_stream.wav"
+            sf.write(save_path, audio_stream[0].cpu().detach().numpy(), 24000)

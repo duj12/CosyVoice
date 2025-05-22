@@ -2195,9 +2195,13 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             self.base_url = qwen_sglang_config['base_url']
             mem_fraction = qwen_sglang_config['mem_ratio']
 
+            python_bin_dir = os.path.dirname(sys.executable)
+            custom_env = os.environ.copy()
+            custom_env["PATH"] = f"{python_bin_dir}:{custom_env['PATH']}"
             self.sgprocess = popen_launch_server(
                 model_path,
                 self.base_url,
+                env=custom_env,   # 这个决定启动子进程的python环境
                 timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
                 other_args=[
                     "--disable-radix",  ### 开启输入embedding模式

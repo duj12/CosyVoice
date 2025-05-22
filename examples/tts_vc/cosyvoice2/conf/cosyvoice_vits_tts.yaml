@@ -38,12 +38,14 @@ upsample_encoder: !new:cosyvoice.transformer.upsample_encoder.UpsampleConformerE
     input_size: 512
     use_cnn_module: False
     macaron_style: False
+    use_dynamic_chunk: True
 
 vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     n_vocab: 6561   # input 25Hz codec
     up_enc1: !ref <upsample_encoder>   # 2 x upsample
     up_enc2: !ref <upsample_encoder>   # 2 x upsample
     token_upsample_ratio: 4
+    use_dynamic_chunk: True
     spec_channels: 513                 # default spectrum bins
     "inter_channels": 512
     "hidden_channels": 512

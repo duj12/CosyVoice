@@ -43,17 +43,19 @@ import time
 
 def ras_sampling2(weighted_scores_in, decoded_tokens_in, top_p=0.8, top_k=25,
                   temperature=1.0, win_size=10, tau_r=0.1,
-                  resample={'topp': 0.15, 'topk': 80, 'temperature': 1.2}):
+                  resample={'topp': 0.15, 'topk': 20, 'temperature': 1.2}):
     # weigted_scores_in: [B, Num_classes]
     # print("ras debug", weighted_scores_in.size(), decoded_tokens_in.size(), end=" ")
-    decoded_tokens = decoded_tokens_in[0, ...]
+    decoded_tokens = decoded_tokens_in  # [0, ...]
 
     # st = time.perf_counter()
     top_ids = sampler(weighted_scores_in, temperature, top_p=top_p,
                       top_k=top_k)  # [B]
     # et = time.perf_counter()
     # print("sampling time:", et-st)
-    rep_nums = (decoded_tokens[-win_size:] == top_ids).sum(0)
+    # rep_nums = (decoded_tokens[-win_size:] == top_ids).sum(0)
+    rep_nums = (torch.tensor(decoded_tokens[-win_size:]).to(
+        weighted_scores_in.device) == top_ids).sum(0)
 
     # st = time.perf_counter()
     rep_top_ids = sampler(weighted_scores_in, resample['temperature'],

@@ -17,7 +17,6 @@ from cosyvoice.transformer.attention import MultiHeadedAttention
 from cosyvoice.transformer.positionwise_feed_forward import PositionwiseFeedForward
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 class Qwen2Encoder(torch.nn.Module):
@@ -316,12 +315,12 @@ class Qwen2LM_Phoneme_Infer(torch.nn.Module):
         for i in range(max_len):
             y_pred, cache, cache_pos = self.llm.forward_one_step(
                 lm_input, cache=cache, cache_position=cache_pos)
-            logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
-            top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
-                                        sampling,
-                                        ignore_eos=True if i < min_len else False).item()
-            # logits = self.llm_decoder(y_pred[:, -1].to(torch.float32))
-            # top_ids = self.sampling(logits, out_tokens)
+            # logp = self.llm_decoder(y_pred[:, -1].to(torch.float32)).log_softmax(dim=-1)
+            # top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
+            #                             sampling,
+            #                             ignore_eos=True if i < min_len else False).item()
+            logits = self.llm_decoder(y_pred[:, -1].to(torch.float32))
+            top_ids = self.sampling(logits, out_tokens)
 
             if top_ids == self.speech_token_size:
                 break

@@ -35,8 +35,9 @@ class Encoder(nn.Module):
                     kernel_size, p_dropout=p_dropout))
             self.norm_layers_2.append(LayerNorm(hidden_channels))
 
-    def forward(self, x, x_mask):
-        attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+    def forward(self, x, x_mask, attn_mask=None):
+        if attn_mask is None:
+            attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
         x = x * x_mask
         for i in range(self.n_layers):
             y = self.attn_layers[i](x, x, attn_mask)

@@ -158,7 +158,7 @@ class Qwen2Attention(nn.Module):
 
         sliding_window = None
 
-        # with sdpa_kernel([SDPBackend.FLASH_ATTENTION]): #不输入mask会自动选择flash attn
+        # with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
         attn_output, attn_weights = self.attention_interface(
             self,
             query_states,
