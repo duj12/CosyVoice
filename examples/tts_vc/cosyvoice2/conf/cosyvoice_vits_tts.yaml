@@ -18,7 +18,7 @@ spk_audio_crop: 10
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
-use_pause_label: False  # whether use human labeled or MFA aligned pause labels
+use_pause_label: True  # whether use human labeled or MFA aligned pause labels
 
 need_text: False  # whether dataset need text
 
@@ -46,6 +46,7 @@ vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     up_enc2: !ref <upsample_encoder>   # 2 x upsample
     token_upsample_ratio: 4
     use_dynamic_chunk: True
+    causal: True                       # 因果卷积
     spec_channels: 513                 # default spectrum bins
     "inter_channels": 512
     "hidden_channels": 512

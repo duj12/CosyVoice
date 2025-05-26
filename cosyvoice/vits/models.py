@@ -9,6 +9,7 @@ import cosyvoice.vits.attentions as attentions
 import cosyvoice.speaker.modules as modules
 import cosyvoice.speaker.commons as commons
 from cosyvoice.speaker.commons import init_weights
+from cosyvoice.speaker.modules import CausalConv1d
 from cosyvoice.utils.mask import add_optional_chunk_mask
 import logging
 
@@ -106,8 +107,10 @@ class ResidualCouplingBlock(nn.Module):
                  dilation_rate,
                  n_layers,
                  n_flows=4,
-                 gin_channels=0):
+                 gin_channels=0,
+                 causal=False):
         super().__init__()
+        logger.info(f"Causal: {causal}")
         self.channels = channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
@@ -120,7 +123,7 @@ class ResidualCouplingBlock(nn.Module):
         for i in range(n_flows):
             self.flows.append(modules.ResidualCouplingLayer(
                 channels, hidden_channels, kernel_size, dilation_rate,
-                n_layers, gin_channels=gin_channels, mean_only=True))
+                n_layers, gin_channels=gin_channels, mean_only=True, causal=causal))
             self.flows.append(modules.Flip())
 
     def forward(self, x, x_mask, g=None, reverse=False):
@@ -172,12 +175,15 @@ class Generator(torch.nn.Module):
     def __init__(self, initial_channel, resblock, resblock_kernel_sizes,
                  resblock_dilation_sizes, upsample_rates,
                  upsample_initial_channel, upsample_kernel_sizes,
-                 gin_channels=0):
+                 gin_channels=0, causal=False):
         super(Generator, self).__init__()
+        logger.info(f"Causal: {causal}")
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
-        self.conv_pre = Conv1d(initial_channel, upsample_initial_channel, 7, 1,
-                               padding=3)
+        self.conv_pre = Conv1d(
+            initial_channel, upsample_initial_channel, 7, 1,
+            padding=3) if not causal else CausalConv1d(
+            initial_channel, upsample_initial_channel, 7, 1)
         resblock = modules.ResBlock1 if resblock == '1' else modules.ResBlock2
 
         self.ups = nn.ModuleList()
@@ -192,13 +198,15 @@ class Generator(torch.nn.Module):
             ch = upsample_initial_channel // (2 ** (i + 1))
             for j, (k, d) in enumerate(
                     zip(resblock_kernel_sizes, resblock_dilation_sizes)):
-                self.resblocks.append(resblock(ch, k, d))
+                self.resblocks.append(resblock(ch, k, d, causal))
 
-        self.conv_post = Conv1d(ch, 1, 7, 1, padding=3, bias=False)
+        self.conv_post = Conv1d(ch, 1, 7, 1, padding=3, bias=False) if not causal else CausalConv1d(
+            ch, 1, 7, 1, bias=False)
         self.ups.apply(init_weights)
 
         if gin_channels != 0:
-            self.cond = nn.Conv1d(gin_channels, upsample_initial_channel, 1)
+            self.cond = nn.Conv1d(gin_channels, upsample_initial_channel, 1) if not causal else CausalConv1d(
+                gin_channels, upsample_initial_channel, 1)
 
     def forward(self, x, g=None):
         x = self.conv_pre(x)
@@ -258,7 +266,8 @@ class VitsDecoder(nn.Module):
                  up_enc1=None,
                  up_enc2=None,
                  upsample_first=True,
-                 use_dynamic_chunk=False,
+                 use_dynamic_chunk=False,  # True时transformer中添加chunk-aware attn mask
+                 causal=False,  # True为因果卷积
                  **kwargs):
 
         super().__init__()
@@ -294,14 +303,15 @@ class VitsDecoder(nn.Module):
         self.dec = Generator(inter_channels, resblock, resblock_kernel_sizes,
                              resblock_dilation_sizes, upsample_rates,
                              upsample_initial_channel, upsample_kernel_sizes,
-                             gin_channels=gin_channels)
+                             gin_channels=gin_channels, causal=causal)
 
         self.enc_q = PosteriorEncoder(spec_channels, inter_channels,
                                       hidden_channels, 5, 1, 16,
                                       gin_channels=gin_channels)
 
         self.flow = ResidualCouplingBlock(inter_channels, hidden_channels,
-                                          5, 1, 4, gin_channels=gin_channels)
+                                          5, 1, 4, gin_channels=gin_channels,
+                                          causal=causal)
 
 
     def forward(self, batch, device):
@@ -360,7 +370,7 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda().eval()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_52_step_600000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_55_step_730000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
 
