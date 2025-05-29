@@ -53,7 +53,7 @@ class TextEncoder(nn.Module):
         self.up_enc2 = up_enc2
         self.upsample_first = upsample_first   # True表示encode在upsample之后
         self.use_dynamic_chunk = use_dynamic_chunk
-        logger.info(f"upsample_first: {upsample_first}, use_dynamic_chunk: {use_dynamic_chunk}")
+        logger.info(f"VitsDecoder - TextEncoder - upsample_first: {upsample_first}, use_dynamic_chunk: {use_dynamic_chunk}")
 
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
@@ -110,7 +110,7 @@ class ResidualCouplingBlock(nn.Module):
                  gin_channels=0,
                  causal=False):
         super().__init__()
-        logger.info(f"Causal: {causal}")
+        logger.info(f"VitsDecoder Flow is Causal: {causal}")
         self.channels = channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
@@ -177,7 +177,7 @@ class Generator(torch.nn.Module):
                  upsample_initial_channel, upsample_kernel_sizes,
                  gin_channels=0, causal=False):
         super(Generator, self).__init__()
-        logger.info(f"Causal: {causal}")
+        logger.info(f"VitsDecoder Generator is Causal: {causal}")
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.conv_pre = Conv1d(
@@ -370,9 +370,10 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda().eval()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_55_step_730000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_56_step_830000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
+    vitsdecoder.dec.remove_weight_norm()
 
     speech_tokenzier = s3tokenizer.load_model(
             "speech_tokenizer_v2_25hz", "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/s3tokenizer/").cuda()
@@ -408,41 +409,141 @@ if __name__ == '__main__':
         return speaker_embedding
 
 
-    def stream_inference(vitsdecoder, speech_token, speaker_emb, chunk_size=60, overlap_size=10, hop_length=960):
-        # 分块
+    def causal_stream_inference(vitsdecoder, speech_token, speaker_emb,
+                                base_chunk_size=50, lookahead_size=10,
+                                hop_length=960):
+        """
+        因果形式的伪流式推理
+        :param base_chunk_size: 每个chunk输出的基本token数
+        :param lookahead_size: 前瞻token数（用于提供未来上下文）
+        :param hop_length: 每个token对应的音频采样点数
+        """
+        B, T = speech_token.shape
+        audio_segments = []
+        processed_tokens = 0  # 已处理的token位置
+
+        # 第一个chunk特殊处理
+        if T > 0:
+            # 第一个输入: [0, base_chunk_size + lookahead_size]
+            first_end = min(base_chunk_size + lookahead_size, T)
+            first_input = speech_token[:, :first_end]
+            first_len = torch.tensor([first_end], device=speech_token.device)
+            first_audio = vitsdecoder.inference(first_input, first_len,
+                                                speaker_emb).squeeze(1)
+
+            # 第一个输出: [0, base_chunk_size] 对应的音频
+            first_output_end = base_chunk_size * hop_length
+            if first_audio.size(1) < first_output_end:
+                # 如果生成的音频不足，使用全部
+                audio_segments.append(first_audio)
+                processed_tokens = first_end
+            else:
+                audio_segments.append(first_audio[:, :first_output_end])
+                processed_tokens = base_chunk_size
+
+        # 后续chunks处理
+        while processed_tokens < T:
+            # 计算当前输入结束位置
+            input_end = min(processed_tokens + base_chunk_size + lookahead_size,
+                            T)
+
+            # 创建从0开始的输入
+            current_input = speech_token[:, :input_end]
+            current_len = torch.tensor([input_end], device=speech_token.device)
+
+            # 推理当前chunk
+            chunk_audio = vitsdecoder.inference(current_input, current_len,
+                                                speaker_emb).squeeze(1)
+
+            # 计算需要保留的音频部分（新增部分）
+            audio_start = processed_tokens * hop_length
+            audio_end = min(processed_tokens + base_chunk_size, T) * hop_length
+
+            # 处理边界情况
+            if chunk_audio.size(1) < audio_end:
+                # 如果生成的音频不足，取能取到的最大部分
+                segment = chunk_audio[:, audio_start:] if chunk_audio.size(
+                    1) > audio_start else None
+                processed_tokens = T  # 标记处理完成
+            else:
+                segment = chunk_audio[:, audio_start:audio_end]
+                processed_tokens += base_chunk_size
+
+            if segment is not None and segment.size(1) > 0:
+                audio_segments.append(segment)
+
+        # 合并所有音频段
+        final_audio = torch.cat(audio_segments,
+                                dim=1) if audio_segments else torch.zeros(
+            (B, 0), device=speech_token.device)
+
+        return final_audio
+
+    def stream_inference(vitsdecoder, speech_token, speaker_emb, chunk_size=70,
+                         overlap_size=10, hop_length=960):
+        """
+        改进的流式推理函数，支持前后overlap
+        :param chunk_size: 每个chunk包含的token数（包含前后overlap）
+        :param overlap_size: 前后重叠的token数（前后各占一半）
+        :param hop_length: 每个token对应的音频采样点数
+        """
+        # 计算实际每个chunk输出的基础token数
+        base_chunk_size = chunk_size - 2 * overlap_size  # 中间非重叠部分的token数
+
         B, T = speech_token.shape
         chunks = []
-        start = 0
+        start = -overlap_size  # 从-overlap_size开始，使第一个块能包含前上下文
+
+        # 创建分块列表
         while start < T:
             end = start + chunk_size
-            if end > T:
-                end = T
-            chunks.append((start, end))
-            start += (chunk_size - overlap_size)
+            # 调整起始位置为0如果小于0
+            adj_start = max(start, 0)
+            # 调整结束位置不超过总长度
+            adj_end = min(end, T)
 
-        # 逐块推理
+            chunks.append((adj_start, adj_end, start, end))
+            start += base_chunk_size  # 移动到下一个基础块位置
+
         audio_segments = []
-        for i, (start_idx, end_idx) in enumerate(chunks):
-            current_chunk = speech_token[:, start_idx:end_idx]
-            current_len = end_idx - start_idx
+        for i, (adj_start, adj_end, orig_start, orig_end) in enumerate(chunks):
+            # 获取当前chunk的token
+            current_chunk = speech_token[:, adj_start:adj_end]
+            current_len = adj_end - adj_start
+
+            # 推理当前chunk
             chunk_code_len = torch.tensor([current_len],
                                           device=speech_token.device)
             chunk_audio = vitsdecoder.inference(current_chunk, chunk_code_len,
                                                 speaker_emb).squeeze(1)
+            audio_len = chunk_audio.size(1)
 
-            if i == 0:
-                audio_segments.append(chunk_audio)
-            else:
-                overlap_audio = overlap_size * hop_length
-                if chunk_audio.size(1) > overlap_audio:
-                    audio_segments.append(chunk_audio[:, overlap_audio:])
-                else:
-                    audio_segments.append(chunk_audio)
+            # 计算需要保留的音频范围
+            if i == 0:  # 第一个chunk
+                # 保留从开始到基础块结束的部分
+                keep_start = 0
+                keep_end = min(base_chunk_size * hop_length, audio_len)
+            elif i == len(chunks) - 1:  # 最后一个chunk
+                # 保留从overlap开始到结束的部分
+                keep_start = overlap_size * hop_length
+                keep_end = audio_len
+            else:  # 中间chunk
+                # 保留中间基础块部分
+                keep_start = overlap_size * hop_length
+                keep_end = keep_start + base_chunk_size * hop_length
+                # 确保不超过实际长度
+                if keep_end > audio_len:
+                    keep_end = audio_len
 
-        # 合并音频
+            # 截取需要保留的音频段
+            segment = chunk_audio[:, keep_start:keep_end]
+            audio_segments.append(segment)
+
+        # 合并所有音频段
         final_audio = torch.cat(audio_segments,
                                 dim=1) if audio_segments else torch.zeros(
             (B, 0), device=speech_token.device)
+
         return final_audio
 
     with torch.no_grad():
@@ -457,10 +558,9 @@ if __name__ == '__main__':
             speech_token,speech_code_len = wav2token(speech_tokenzier, wave)
             speaker_emb = wav2spkemb(speaker_encoder, wave)
             audio = vitsdecoder.inference(speech_token, speech_code_len, speaker_emb).squeeze(1)
-            audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 50,10)
             print(f"input: {wave.size()} recon: {audio.size()}")
             save_path = f"{save_dir}/{name}_vits.wav"
             sf.write(save_path, audio[0].cpu().detach().numpy(), 24000)
-            audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 60, 10)
+            audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 60, 5)
             save_path = f"{save_dir}/{name}_vits_stream.wav"
             sf.write(save_path, audio_stream[0].cpu().detach().numpy(), 24000)
