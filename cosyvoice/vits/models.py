@@ -362,6 +362,7 @@ if __name__ == '__main__':
     import soundfile as sf
     import s3tokenizer
     import torchaudio
+    import librosa, numpy
     from hyperpyyaml import load_hyperpyyaml
     from cosyvoice.speaker.speaker_encoder import SpeakerEmbedding
 
@@ -370,7 +371,7 @@ if __name__ == '__main__':
         configs = load_hyperpyyaml(f, overrides={})
     vitsdecoder = configs['vitsdecoder'].cuda().eval()
 
-    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_56_step_830000.pt"
+    ckpt_path = "/data/megastore/Projects/DuJing/code/CosyVoice/examples/tts_vc/cosyvoice2/exp/vits_tts/epoch_57_step_1060000.pt"
     state_dict = {k.replace('generator.', ''): v for k, v in torch.load(ckpt_path, map_location='cpu').items()}
     vitsdecoder.load_state_dict(state_dict, strict=False)
     vitsdecoder.dec.remove_weight_norm()
@@ -408,6 +409,32 @@ if __name__ == '__main__':
         speaker_embedding = speaker_encoder(waves_padded, wave_lengths)
         return speaker_embedding
 
+
+    def phase_align(a, b, overlap=1200, sr=24000):
+        min_size = len(b)
+        n_fft = min(1024, int(min_size//2))
+        hop_length = n_fft // 4
+        overlap = min(min_size, overlap)
+        # 提取重叠部分
+        a_tail = a[-overlap:]
+        b_head = b[:overlap]
+
+        # 分析a_tail的相位
+        stft_a = librosa.stft(a_tail, n_fft=n_fft, hop_length=hop_length)
+        mag_a, phase_a = librosa.magphase(stft_a)
+
+        # 分析b_head的幅度和相位
+        stft_b = librosa.stft(b_head, n_fft=n_fft, hop_length=hop_length)
+        mag_b, phase_b = librosa.magphase(stft_b)
+
+        # 相位对齐：将b_head的相位替换为a_tail的相位
+        stft_b_aligned = mag_b * numpy.exp(1j * phase_a)
+
+        # 重建对齐后的b_head
+        b_head_aligned = librosa.istft(
+            stft_b_aligned, hop_length=hop_length, length=len(b_head))
+        b[:overlap] = b_head_aligned
+        return b
 
     def causal_stream_inference(vitsdecoder, speech_token, speaker_emb,
                                 base_chunk_size=50, lookahead_size=10,
@@ -479,7 +506,7 @@ if __name__ == '__main__':
 
         return final_audio
 
-    def stream_inference(vitsdecoder, speech_token, speaker_emb, chunk_size=70,
+    def stream_inference0(vitsdecoder, speech_token, speaker_emb, chunk_size=70,
                          overlap_size=10, hop_length=960):
         """
         改进的流式推理函数，支持前后overlap
@@ -537,6 +564,9 @@ if __name__ == '__main__':
 
             # 截取需要保留的音频段
             segment = chunk_audio[:, keep_start:keep_end]
+            # if len(audio_segments) > 0:
+            #     last_segment = audio_segments[-1].squeeze().cpu().numpy()
+            #     segment = torch.from_numpy(phase_align(last_segment, segment.squeeze().cpu().numpy())).unsqueeze(0).to(speech_token.device) # 对当前chunk进行相位修复
             audio_segments.append(segment)
 
         # 合并所有音频段
@@ -545,6 +575,176 @@ if __name__ == '__main__':
             (B, 0), device=speech_token.device)
 
         return final_audio
+
+
+    def stream_inference(vitsdecoder, speech_token, speaker_emb, chunk_size=70,
+                         overlap_size=10, hop_length=960):
+        """
+        改进的流式推理函数，支持前后overlap和淡入淡出效果
+        :param chunk_size: 每个chunk包含的token数（包含前后overlap）
+        :param overlap_size: 前后重叠的token数（前后各占一半）
+        :param hop_length: 每个token对应的音频采样点数
+        """
+        # 计算实际每个chunk输出的基础token数
+        base_chunk_size = chunk_size - 2 * overlap_size  # 中间非重叠部分的token数
+        fade_length = 2* overlap_size * hop_length  # 淡入淡出窗口长度
+
+        B, T = speech_token.shape
+        chunks = []
+        start = -overlap_size  # 从-overlap_size开始，使第一个块能包含前上下文
+
+        # 创建分块列表
+        while start < T:
+            end = start + chunk_size
+            # 调整起始位置为0如果小于0
+            adj_start = max(start, 0)
+            # 调整结束位置不超过总长度
+            adj_end = min(end, T)
+
+            chunks.append((adj_start, adj_end, start, end))
+            start += base_chunk_size  # 移动到下一个基础块位置
+
+        audio_segments = []
+        prev_tail = None  # 保存上一个块的尾部（用于交叉淡化）
+
+        for i, (adj_start, adj_end, orig_start, orig_end) in enumerate(chunks):
+            # 获取当前chunk的token
+            current_chunk = speech_token[:, adj_start:adj_end]
+            current_len = adj_end - adj_start
+
+            # 推理当前chunk
+            chunk_code_len = torch.tensor([current_len],
+                                          device=speech_token.device)
+            chunk_audio = vitsdecoder.inference(current_chunk, chunk_code_len,
+                                                speaker_emb).squeeze(1)
+            audio_len = chunk_audio.size(1)
+
+            # 计算需要保留的音频范围
+            if i == 0:  # 第一个chunk
+                # 保留从开始到基础块结束的部分
+                keep_start = 0
+                keep_end = min(base_chunk_size * hop_length, audio_len)
+                segment = chunk_audio[:, keep_start:keep_end]
+
+                # 保存尾部用于下一个块的交叉淡化, 是末尾overlap + 多生成的部分
+                tail_start = max(0, audio_len - fade_length)
+                prev_tail = chunk_audio[:, tail_start:]
+
+            elif i == len(chunks) - 1:  # 最后一个chunk
+                # 保留从overlap开始到结束的部分
+                keep_start = overlap_size * hop_length
+                keep_end = audio_len
+
+                # 如果有上一个块的尾部，应用交叉淡化
+                if prev_tail is not None:
+                    # 当前块的头部用于交叉淡化
+                    head_end = min(fade_length, audio_len)
+                    current_head = chunk_audio[:, :head_end]
+
+                    # 创建淡入淡出曲线
+                    fade_out = torch.linspace(1.0, 0.0, prev_tail.size(1),
+                                              device=chunk_audio.device)
+                    fade_in = torch.linspace(0.0, 1.0, current_head.size(1),
+                                             device=chunk_audio.device)
+
+                    # 调整长度以匹配（取两者中较小的长度）
+                    min_len = min(prev_tail.size(1), current_head.size(1))
+                    mixed = prev_tail[:, :min_len] * fade_out[
+                                                     :min_len] + current_head[:,
+                                                                 :min_len] * fade_in[
+                                                                             :min_len]
+
+                    # 拼接：混合部分 + 当前块的剩余部分
+                    segment = torch.cat(
+                        [mixed[:, keep_start:], chunk_audio[:, min_len:keep_end]], dim=1)
+                else:
+                    segment = chunk_audio[:, keep_start:keep_end]
+            else:  # 中间chunk
+                # 保留中间基础块部分
+                keep_start = overlap_size * hop_length
+                keep_end = keep_start + base_chunk_size * hop_length
+                if keep_end > audio_len:
+                    keep_end = audio_len
+
+                # 如果有上一个块的尾部，应用交叉淡化
+                if prev_tail is not None:
+                    # 当前块的头部用于交叉淡化
+                    head_end = min(fade_length, audio_len)
+                    current_head = chunk_audio[:, :head_end]
+
+                    # 创建淡入淡出曲线
+                    fade_out = torch.linspace(1.0, 0.0, prev_tail.size(1),
+                                              device=chunk_audio.device)
+                    fade_in = torch.linspace(0.0, 1.0, current_head.size(1),
+                                             device=chunk_audio.device)
+
+                    # 调整长度以匹配（取两者中较小的长度）
+                    min_len = min(prev_tail.size(1), current_head.size(1))
+                    mixed = prev_tail[:, :min_len] * fade_out[
+                                                     :min_len] + current_head[:,
+                                                                 :min_len] * fade_in[
+                                                                             :min_len]
+
+                    # 拼接：混合部分 + 当前块的基础部分
+                    segment = torch.cat(
+                        [mixed[:, keep_start:], chunk_audio[:, min_len:keep_end]], dim=1)
+
+                else:
+                    segment = chunk_audio[:, :keep_end]
+
+                # 保存尾部用于下一个块的交叉淡化
+                tail_start = max(0, audio_len - fade_length)
+                prev_tail = chunk_audio[:, tail_start:]
+
+            audio_segments.append(segment)
+
+        # 合并所有音频段
+        final_audio = torch.cat(audio_segments,
+                                dim=1) if audio_segments else torch.zeros(
+            (B, 0), device=speech_token.device)
+
+        return final_audio
+
+
+    def save_chunks_to_wav(chunks, output_path, sample_rate=24000,
+                           bit_depth=16, n_channels=1):
+        """将多个音频chunk保存为WAV文件"""
+        import io
+        import struct
+        # 1. 合并所有chunk的PCM数据
+        pcm_data = b''.join(
+            (chunk * (2 ** (bit_depth - 1) - 1)).astype(
+                numpy.int16).tobytes()
+             for chunk in chunks
+        )
+
+        # 2. 计算文件信息
+        data_size = len(pcm_data)
+        byte_rate = sample_rate * n_channels * bit_depth // 8
+        block_align = n_channels * bit_depth // 8
+
+        # 3. 构建WAV文件头 (44字节)
+        header = struct.pack(
+            '<4sI4s4sIHHIIHH4sI',
+            b'RIFF',  # RIFF标识
+            36 + data_size,  # 文件总大小-8
+            b'WAVE',  # WAVE标识
+            b'fmt ',  # fmt块标识
+            16,  # fmt块大小
+            1,  # 音频格式（PCM=1）
+            n_channels,  # 声道数
+            sample_rate,  # 采样率
+            byte_rate,  # 字节率
+            block_align,  # 块对齐
+            bit_depth,  # 位深度
+            b'data',  # data块标识
+            data_size  # 数据大小
+        )
+
+        # 4. 写入文件
+        with open(output_path, 'wb') as f:
+            f.write(header)
+            f.write(pcm_data)
 
     with torch.no_grad():
         test_dir = "/data/megastore/SHARE/TTS/ref_audios/codec_test"
@@ -564,3 +764,24 @@ if __name__ == '__main__':
             audio_stream = stream_inference(vitsdecoder,speech_token,speaker_emb, 60, 5)
             save_path = f"{save_dir}/{name}_vits_stream.wav"
             sf.write(save_path, audio_stream[0].cpu().detach().numpy(), 24000)
+
+            def split_audio_array(audio_array, chunk_size=48000):
+                """更高效的实现"""
+                n = len(audio_array)
+                # 创建完整chunk的列表
+                chunks = [
+                    audio_array[i:i + chunk_size]
+                    for i in range(0, n - chunk_size + 1, chunk_size)
+                ]
+
+                # 添加最后一个chunk（可能不足长度）
+                last_start = n - (n % chunk_size)
+                if last_start < n:
+                    chunks.append(audio_array[last_start:])
+
+                return chunks
+            # chunks = split_audio_array(audio_stream[0].cpu().detach().numpy())
+            # save_chunks_to_wav(chunks, save_path)  # 不用sf.write, 直接转二进制写入
+            # for i, chunk in enumerate(chunks):
+            #     save_path = f"{save_dir}/{name}_vits_stream_chunk_{i+1}.wav"
+            #     sf.write(save_path, chunk, 24000)
