@@ -23,7 +23,7 @@ import re
 import sys
 import datetime
 import yaml
-
+import numpy
 import deepspeed
 import torch.optim as optim
 import torch.distributed as dist
@@ -497,17 +497,38 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model, configs):
             configs['speaker_vectors'] = spkemb
     else:
         configs['speaker_vectors'] = {}
-
+    use_offline_uttemb = configs.get('use_offline_uttemb', False)
     if spkemb_model is not None:
         speaker_vec_list = []
         spker_list = batch_dict['spks']
+        utt_list = batch_dict['utts']
         wave_list = []
         wave_len_list = []
         # 先把有离线说话人向量的数据拿出来
-        for i, spk in enumerate(spker_list):
-            if spk in configs['speaker_vectors']:
-                speaker_vec_list.append(configs['speaker_vectors'][spk])
-            else:
+        if use_offline_uttemb:
+            for i, data_utt in enumerate(utt_list):
+                data_utt = data_utt.split('-', maxsplit=1)
+                data_spk = spker_list[i].split('-', maxsplit=1)
+                data_name, spk_name = data_spk[0], data_spk[1]
+                data_name, utt_name = data_utt[0], data_utt[1]
+                uttemb_path = os.path.join("/data/megastore/Projects/liyuhan/expdatas/spkemb/lamvc_all", data_name, spk_name, f"{utt_name}.npy")
+                if os.path.exists(uttemb_path):
+                    utt_emb = torch.from_numpy(numpy.load(uttemb_path)).to(codec_model.device)
+                    speaker_vec_list.append(utt_emb)
+                else:
+                    speaker_vec_list.append(None)
+                    wave_list.append(wave[i])
+                    wave_len_list.append(wave_len[i])
+        elif use_offline_spkemb:
+            for i, spk in enumerate(spker_list):
+                if spk in configs['speaker_vectors']:
+                    speaker_vec_list.append(configs['speaker_vectors'][spk])
+                else:
+                    speaker_vec_list.append(None)
+                    wave_list.append(wave[i])
+                    wave_len_list.append(wave_len[i])
+        else:   # 整个batch都要在线提取
+            for i, utt in enumerate(utt_list):
                 speaker_vec_list.append(None)
                 wave_list.append(wave[i])
                 wave_len_list.append(wave_len[i])
@@ -549,10 +570,8 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model, configs):
                 speaker_embs = spkemb_model(spk_wave.unsqueeze(1), spk_wave_len)  # B D
 
         idx = 0
-        for i, spk in enumerate(spker_list):
-            if spk in configs['speaker_vectors']:
-                pass
-            else:
+        for i, spk_vec in enumerate(speaker_vec_list):
+            if spk_vec is None:
                 speaker_vec_list[i] = speaker_embs[idx]
                 idx += 1
 

@@ -19,8 +19,8 @@ spk_audio_crop: 10
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: True  # whether use human labeled or MFA aligned pause labels
-
 need_text: False  # whether dataset need text
+# use_offline_uttemb: True  # 使用离线提取的向量
 
 # model params
 upsample_encoder: !new:cosyvoice.transformer.upsample_encoder.UpsampleConformerEncoder
@@ -64,7 +64,7 @@ vitsdecoder: !new:cosyvoice.vits.models.VitsDecoder
     "n_layers_q": 3
     "use_spectral_norm": false
     "gin_channels": 512
-    "segment_size": 48000
+    "segment_size": 9600
 
 llm:
 
@@ -99,7 +99,7 @@ filter: !name:cosyvoice.dataset.processor_kaldidata.filter
 resample: !name:cosyvoice.dataset.processor_kaldidata.resample
     resample_rate: !ref <sample_rate>
 truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
-    truncate_length: 240000  # must be a multiplier of hop_size, 10s wave
+    truncate_length: 24000  # must be a multiplier of hop_size, 10s wave
 
 # vits 中后验编码使用线性谱作为输入
 feat_extractor: !name:cosyvoice.speaker.mel_processing.spectrogram_torch
@@ -116,7 +116,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 16
+    batch_size: 4
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft
@@ -135,7 +135,7 @@ data_pipeline: [
 data_pipeline_gan: [
     !ref <filter>,
     !ref <resample>,
-    !ref <truncate>,
+    # !ref <truncate>,
     !ref <compute_fbank>,
     !ref <shuffle>,
     !ref <sort>,

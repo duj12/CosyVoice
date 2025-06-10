@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os.path
-
+import queue
+import time
+import threading
 from typing import Dict, Optional, Callable, List, Generator, Tuple
 import torch
 from torch import nn
@@ -2183,7 +2185,6 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
         # 5. use_sglang
         self.use_sglang = (qwen_sglang_config is not None)
         if self.use_sglang:
-            self.llm = None
             from sglang.test.test_utils import (
                 DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
                 DEFAULT_URL_FOR_TEST,
@@ -2218,6 +2219,9 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             signal.signal(signal.SIGINT, self.signal_handler)
             signal.signal(signal.SIGTERM, self.signal_handler)
             atexit.register(self.cleanup)
+
+            del self.llm.model.model.layers
+            self.llm = None
 
     def cleanup(self):
         from sglang.srt.utils import kill_process_tree
@@ -2378,7 +2382,10 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
                     if chunk == "data: [DONE]":
                         break
                     data = json.loads(chunk[5:].strip("\n"))
-                    top_ids = data["token_ids"][-1]
+                    if 'output_ids' in data:
+                        top_ids = data["output_ids"][-1]   # 兼容高版本sglang
+                    else:
+                        top_ids = data["token_ids"][-1]   # sglang==0.4.3.post2
 
                     if top_ids == self.speech_token_size:
                         break
@@ -2387,6 +2394,298 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
                         continue
 
                     yield top_ids
+        else:
+            out_tokens = []
+            cache = None
+            for i in range(max_len):
+                y_pred, cache = self.llm.forward_one_step(
+                    lm_input,
+                    # masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
+                    masks=torch.ones((1, lm_input.shape[1], lm_input.shape[1]),
+                                     device=lm_input.device).to(torch.bool),
+                    cache=cache)
+                logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
+                top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens,
+                                            sampling,
+                                            ignore_eos=True if i < min_len else False).item()
+                if top_ids == self.speech_token_size:
+                    break
+                if top_ids > self.speech_token_size:
+                    logger.warning(f"================big token！！！{top_ids}")
+                    continue
+                # in stream mode, yield token one by one
+                yield top_ids
+                out_tokens.append(top_ids)
+                lm_input = self.speech_embedding.weight[top_ids].reshape(1, 1, -1)
+
+
+class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
+    '''
+    use sec-attention to fuse Text Embedding and Phoneme embedding.
+    the sequence used to predict is Phoneme, use vllm for llm inference
+    '''
+
+    def __init__(
+            self,
+            text_encoder_input_size: int,
+            llm_input_size: int,
+            llm_output_size: int,
+            text_token_size: int,
+            text_token_dim: int,
+            text_tone_size: int,
+            text_tone_dim: int,
+            text_lang_size: int,
+            text_lang_dim: int,
+            text_prsd_size: int,
+            text_prsd_dim: int,
+            speech_token_size: int,
+            text_encoder: torch.nn.Module,
+            llm: torch.nn.Module,
+            sampling: Callable,
+            length_normalized_loss: bool = True,
+            lsm_weight: float = 0.0,
+            spk_embed_dim: int = 512,
+            use_frontend_prsd: bool = False,
+            use_pause_label: bool = False,
+            qwen_sglang_config: dict = None,
+    ):
+        super().__init__()
+        self.llm_input_size = llm_input_size
+        self.llm_output_size = llm_output_size
+        self.speech_token_size = speech_token_size
+        # 1. build phoneme token inputs related modules
+        assert (text_token_dim + text_tone_dim + text_lang_dim + text_prsd_dim) == text_encoder_input_size
+        self.text_embedding = nn.ModuleList([
+            torch.nn.Embedding(text_token_size, text_token_dim),
+            torch.nn.Embedding(text_tone_size, text_tone_dim),
+            torch.nn.Embedding(text_lang_size, text_lang_dim),
+            torch.nn.Embedding(text_prsd_size, text_prsd_dim)
+        ])
+        self.use_frontend_prsd = use_frontend_prsd
+        self.use_pause_label = use_pause_label
+        logger.info(
+            f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}")
+
+        self.text_encoder = text_encoder
+        self.text_encoder_affine_layer = nn.Linear(
+            self.text_encoder.output_size(), llm_input_size
+        )
+        #  Hard code Decoder layer as arc-attention
+        self.src_attention = torch.nn.ModuleList([
+            DecoderLayer(
+                llm_input_size,
+                MultiHeadedAttention(16, llm_input_size, 0.1, key_bias=True),
+                MultiHeadedAttention(16, llm_input_size, 0.1, key_bias=True),
+                PositionwiseFeedForward(llm_input_size, 4096, 0.1),
+                dropout_rate=0.1,
+                normalize_before=True,
+            ) for _ in range(1)
+        ])
+
+        # 2. build speech token language model related modules
+        self.sos_eos = 0
+        self.task_id = 1
+        self.fill_token = 2
+
+        self.llm_embedding = torch.nn.Embedding(2, llm_input_size)
+        self.llm = llm
+        self.llm_decoder = nn.Linear(llm_output_size, speech_token_size + 3)
+        self.criterion_ce = LabelSmoothingLoss(
+            size=speech_token_size + 3,
+            padding_idx=IGNORE_ID,
+            smoothing=lsm_weight,
+            normalize_length=length_normalized_loss,
+        )
+
+        # 3. [Optional] build speech token related modules
+        self.speech_embedding = torch.nn.Embedding(speech_token_size + 3,
+                                                   llm_input_size)
+        self.spk_embed_affine_layer = torch.nn.Linear(spk_embed_dim,
+                                                      llm_input_size)
+
+        # 4. sampling method
+        self.sampling = sampling
+
+        # sglang 推理时，去掉模型中qwen部分的显存, 将qwen_token_embed剥离出来
+        self.qwen_token_embed = self.llm.model.model.embed_tokens
+
+        # 5. vllm related
+        self.stop_token_ids = [speech_token_size + i for i in range(3)]
+        self.vllm_output_queue = {}
+        self.lock = threading.Lock()
+        self.use_vllm = (qwen_sglang_config is not None)
+        if self.use_vllm:
+            python_bin_dir = os.path.dirname(sys.executable)
+            custom_env = os.environ.copy()
+            custom_env["PATH"] = f"{python_bin_dir}:{custom_env['PATH']}"
+            model_path = qwen_sglang_config['model_path']
+            self.base_url = qwen_sglang_config['base_url']  # 直接在同一个进程中启动，此参数不需要了
+            mem_fraction = qwen_sglang_config['mem_ratio']
+
+            from vllm import ModelRegistry
+            from cosyvoice.vllm.cosyvoice2 import CosyVoice2ForCausalLM
+            ModelRegistry.register_model("CosyVoice2ForCausalLM", CosyVoice2ForCausalLM)
+            from vllm import EngineArgs, LLMEngine
+            engine_args = EngineArgs(model=model_path,
+                                     skip_tokenizer_init=True,
+                                     enable_prompt_embeds=True,
+                                     gpu_memory_utilization=float(mem_fraction))
+            self.vllm = LLMEngine.from_engine_args(engine_args)
+            del self.llm.model.model.layers
+
+    def encode(
+            self,
+            text: torch.Tensor,
+            text_lengths: torch.Tensor,
+    ):
+        encoder_out, encoder_mask = self.text_encoder(text, text_lengths,
+                                                      decoding_chunk_size=-1,
+                                                      num_decoding_left_chunks=-1)
+        encoder_out_lens = encoder_mask.squeeze(1).sum(1)
+        encoder_out = self.text_encoder_affine_layer(encoder_out)
+        return encoder_out, encoder_out_lens
+
+    def pad_unpad_sequence(self, sos_eos_emb, embedding, text_token,
+                           text_token_len,
+                           task_id_emb, speech_token, speech_token_len):
+        text_token = unpad_sequence(text_token, text_token_len.cpu(),
+                                    batch_first=True)
+        speech_token = unpad_sequence(speech_token, speech_token_len.cpu(),
+                                      batch_first=True)
+        lm_input = [torch.concat(
+            [sos_eos_emb.squeeze(dim=0), embedding[i], text_token[i],
+             task_id_emb.squeeze(dim=0), speech_token[i]], dim=0)
+            for i in range(len(text_token))]
+        lm_input_len = torch.tensor([i.size(0) for i in lm_input],
+                                    dtype=torch.int32)
+        lm_input = pad_sequence(lm_input, batch_first=True,
+                                padding_value=IGNORE_ID)
+        return lm_input, lm_input_len
+
+    def sampling_ids(
+            self,
+            weighted_scores: torch.Tensor,
+            decoded_tokens: List,
+            sampling: int,
+            ignore_eos: bool = True,
+    ):
+        num_trials, max_trials = 0, 100
+        while True:
+            top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
+            if (not ignore_eos) or (self.speech_token_size not in top_ids):
+                break
+            num_trials += 1
+            if num_trials > max_trials:
+                logger.warning(f'sampling reaches max_trials {max_trials} and still get eos when ignore_eos is True, check your input!')
+                break
+        return top_ids
+
+    @torch.inference_mode()
+    def inference(
+            self,
+            text: Tuple,
+            text_len: Tuple,
+            prompt_text: Tuple,
+            prompt_text_len: Tuple,
+            prompt_speech_token: torch.Tensor,
+            prompt_speech_token_len: torch.Tensor,
+            embedding: torch.Tensor,
+            sampling: int = 20,
+            max_token_text_ratio: float = 20,
+            min_token_text_ratio: float = 2,
+            uuid: str="",
+    ) -> Generator[torch.Tensor, None, None]:
+        device = embedding.device
+
+        text, pho = text
+        text_len, pho_len = text_len
+        prompt_text, prompt_pho = prompt_text
+        prompt_text_len, prompt_pho_len = prompt_text_len
+
+        text = torch.concat([prompt_text, text], dim=1)
+        text_len += prompt_text_len
+        pho = torch.concat([prompt_pho, pho], dim=1)
+        pho_len += prompt_pho_len
+
+        pho_embed_list = []
+        for i in range(len(self.text_embedding)):
+            embed = self.text_embedding[i](pho[:, :, i])
+            if not self.use_frontend_prsd and i == 3:
+                embed *= 0.0
+            pho_embed_list.append(embed)
+        pho = torch.cat(pho_embed_list, dim=-1)
+
+        # 1. encode text
+        pho, pho_len = self.encode(pho, pho_len)
+        text = self.qwen_token_embed(text)
+
+        text_mask = ~make_pad_mask(text_len, text.size(1)).unsqueeze(
+            1)  # (B, 1, T1)
+        pho_mask = ~make_pad_mask(pho_len, pho.size(1)).unsqueeze(
+            1)  # (B, 1, T2)
+        for src_attention in self.src_attention:
+            pho, pho_mask, text, text_mask = src_attention(pho, pho_mask, text,
+                                                           text_mask)
+
+        # 2. encode embedding
+        if embedding.shape[0] != 0:
+            embedding = F.normalize(embedding, dim=1)
+            embedding = self.spk_embed_affine_layer(embedding)
+            embedding = embedding.unsqueeze(dim=1)
+        else:
+            embedding = torch.zeros(1, 0, self.llm_input_size,
+                                    dtype=text.dtype).to(device)
+
+        # 3. concat llm_input
+        sos_eos_emb = self.llm_embedding.weight[self.sos_eos].reshape(1, 1, -1)
+        task_id_emb = self.llm_embedding.weight[self.task_id].reshape(1, 1, -1)
+        if prompt_speech_token_len != 0:
+            prompt_speech_token_emb = self.speech_embedding(prompt_speech_token)
+        else:
+            prompt_speech_token_emb = torch.zeros(1, 0, self.llm_input_size,
+                                                  dtype=text.dtype).to(device)
+        lm_input = torch.concat(
+            [sos_eos_emb, embedding, pho, task_id_emb, prompt_speech_token_emb],
+            dim=1)
+
+        # 4. cal min/max_length
+        min_len = int((text_len - prompt_text_len) * min_token_text_ratio)
+        max_len = int((text_len - prompt_text_len) * max_token_text_ratio)
+
+        # 5. step by step decode
+        if self.use_vllm:
+            from vllm import SamplingParams, RequestOutput
+            sampling_params = SamplingParams(top_k=sampling,
+                                             stop_token_ids=self.stop_token_ids,
+                                             min_tokens=min_len,
+                                             max_tokens=max_len)
+            with self.lock:
+                self.vllm.add_request(uuid, {
+                    "prompt_embeds": lm_input.squeeze(0).to(torch.bfloat16).to(
+                        lm_input.device)}, sampling_params)
+                self.vllm_output_queue[uuid] = queue.Queue()
+            out_tokens = []
+            while True:
+                with self.lock:
+                    if self.vllm_output_queue[uuid].empty() is True:
+                        request_outputs: List[RequestOutput] = self.vllm.step()
+                        for request_output in request_outputs:
+                            top_ids = list(request_output.outputs[0].token_ids)[
+                                -1]
+                            self.vllm_output_queue[
+                                request_output.request_id].put(top_ids)
+                if self.vllm_output_queue[uuid].empty() is False:
+                    top_ids = self.vllm_output_queue[uuid].get()
+                    if top_ids in self.stop_token_ids:
+                        break
+                    # in stream mode, yield token one by one
+                    yield top_ids
+                    out_tokens.append(top_ids)
+                    if len(out_tokens) == max_len:
+                        break
+                time.sleep(0.001)
+            with self.lock:
+                self.vllm_output_queue.pop(uuid)
         else:
             out_tokens = []
             cache = None

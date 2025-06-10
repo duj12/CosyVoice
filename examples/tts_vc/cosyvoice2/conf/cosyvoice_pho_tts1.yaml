@@ -433,14 +433,15 @@ train_data: [
 #    [ "/data/megastore/SHARE/TTS/VoiceClone3/DongwuZQ/DongwuZQ.vits.json",0,1 ],
 #    [ "/data/megastore/SHARE/TTS/VoiceClone3/GuangdongTiyu/GuangdongTiyu.vits.json",0,1 ],
 #    [ "/data/megastore/SHARE/TTS/VoiceClone3/XmovLJ/XmovLJ.vits.json",0,1 ],
-
-    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/Musk+Scarlett.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/IP_eng/IP_eng.nomfa.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/IP_chn/IP_chn.nomfa.json",0,1 ],
+#
+#    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/Musk+Scarlett.json",1,1 ],
+#    [ "/data/megastore/SHARE/TTS/VoiceClone3/IP_eng/IP_eng.nomfa.json",1,1 ],
+#    [ "/data/megastore/SHARE/TTS/VoiceClone3/IP_chn/IP_chn.nomfa.json",0,1 ],
+    [ "/data/megastore/SHARE/TTS/VoiceClone3/DuXY_ManM/DuXY_ManM.nomfa.json",0,1 ],
 
 ]
 train_data_indexes: [
-    [0,1,2,3,4]
+    [0,1,2]
 ]
 
 train_data_indexes1: [
