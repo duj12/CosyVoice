@@ -1,44 +1,23 @@
-# Copyright (c) 2024 Alibaba Inc (authors: Xiang Lyu)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import print_function
-
-import argparse
+from hyperpyyaml import load_hyperpyyaml
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
-import os
-import sys
 import torch
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append('{}/../..'.format(ROOT_DIR))
-sys.path.append('{}/../../third_party/Matcha-TTS'.format(ROOT_DIR))
-from cosyvoice.cli.cosyvoice import CosyVoice
+from cosyvoice.utils.file_utils import logging
 
 
-def get_args():
-    parser = argparse.ArgumentParser(description='export your model for deployment')
-    parser.add_argument('--model_dir',
-                        type=str,
-                        default='pretrained_models/CosyVoice-300M',
-                        help='local path')
-    args = parser.parse_args()
-    print(args)
-    return args
+
+def get_optimized_script(model, preserved_attrs=[]):
+    script = torch.jit.script(model)
+    if preserved_attrs != []:
+        script = torch.jit.freeze(script, preserved_attrs=preserved_attrs)
+    else:
+        script = torch.jit.freeze(script)
+    script = torch.jit.optimize_for_inference(script)
+    return script
 
 
 def main():
-    args = get_args()
     logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s %(levelname)s %(message)s')
 
@@ -46,28 +25,31 @@ def main():
     torch._C._jit_set_profiling_mode(False)
     torch._C._jit_set_profiling_executor(False)
 
-    cosyvoice = CosyVoice(args.model_dir, load_jit=False, load_onnx=False)
+    pretrain_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/acoustics/qwen/CosyVoice-BlankEN"
+    vc_config_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/vc_config_v2.yaml"
+    vc_model_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow/flow_v2.pt"
+    save_root = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow"
 
-    # 1. export llm text_encoder
-    llm_text_encoder = cosyvoice.model.llm.text_encoder.half()
-    script = torch.jit.script(llm_text_encoder)
-    script = torch.jit.freeze(script)
-    script = torch.jit.optimize_for_inference(script)
-    script.save('{}/llm.text_encoder.fp16.zip'.format(args.model_dir))
+    state_dict = torch.load(vc_model_path)
+    print(state_dict.keys())
+    with open(vc_config_path, 'r') as f:
+        vc_configs = load_hyperpyyaml(f, overrides={
+            'qwen_pretrain_path': pretrain_path,
+            'qwen_sglang_config': None,
+            'llm': None,
+            'hift': None,
+        })
 
-    # 2. export llm llm
-    llm_llm = cosyvoice.model.llm.llm.half()
-    script = torch.jit.script(llm_llm)
-    script = torch.jit.freeze(script, preserved_attrs=['forward_chunk'])
-    script = torch.jit.optimize_for_inference(script)
-    script.save('{}/llm.llm.fp16.zip'.format(args.model_dir))
+    VC_model = vc_configs['flow'].eval()
+    VC_model.load_state_dict(state_dict, strict=False)
 
-    # 3. export flow encoder
-    flow_encoder = cosyvoice.model.flow.encoder
-    script = torch.jit.script(flow_encoder)
-    script = torch.jit.freeze(script)
-    script = torch.jit.optimize_for_inference(script)
-    script.save('{}/flow.encoder.fp32.zip'.format(args.model_dir))
+    # export flow encoder
+    flow_encoder = VC_model.encoder
+    script = get_optimized_script(flow_encoder)
+    script.save('{}/flow.encoder.fp32.zip'.format(save_root))
+    script = get_optimized_script(flow_encoder.half())
+    script.save('{}/flow.encoder.fp16.zip'.format(save_root))
+    logging.info('successfully export flow_encoder')
 
 
 if __name__ == '__main__':
