@@ -2237,6 +2237,7 @@ class Qwen2LM_Phoneme_Sglang(torch.nn.Module):
             base_url + "/generate",
             json=payload,
             timeout=30,  # Set a reasonable timeout for the API request
+            stream=True,  # 这里也必须开启流式，不然sglang会把整句生成完才开始返回
         )
         if response.status_code == 200:
             return response
