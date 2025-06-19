@@ -513,8 +513,13 @@ def get_codec_and_spkemb(batch_dict, codec_model, spkemb_model, configs):
                 data_name, utt_name = data_utt[0], data_utt[1]
                 uttemb_path = os.path.join("/data/megastore/Projects/liyuhan/expdatas/spkemb/lamvc_all", data_name, spk_name, f"{utt_name}.npy")
                 if os.path.exists(uttemb_path):
-                    utt_emb = torch.from_numpy(numpy.load(uttemb_path)).to(codec_model.device)
-                    speaker_vec_list.append(utt_emb)
+                    try:
+                        utt_emb = torch.from_numpy(numpy.load(uttemb_path)).to(codec_model.device)
+                        speaker_vec_list.append(utt_emb)
+                    except Exception:
+                        speaker_vec_list.append(None)
+                        wave_list.append(wave[i])
+                        wave_len_list.append(wave_len[i])
                 else:
                     speaker_vec_list.append(None)
                     wave_list.append(wave[i])

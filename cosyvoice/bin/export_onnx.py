@@ -12,6 +12,14 @@ from hyperpyyaml import load_hyperpyyaml
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append('{}/../..'.format(ROOT_DIR))
 from cosyvoice.utils.file_utils import logging
+torch.backends.cudnn.enabled = False    # 必须设置为False
+torch.backends.cudnn.benchmark = False
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
+torch.backends.cudnn.deterministic = True
+torch.use_deterministic_algorithms(True)
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def get_dummy_input(batch_size, seq_len, out_channels, device):
@@ -44,14 +52,15 @@ def main():
             'hift': None,
         })
 
-    model = vc_configs['flow'].cuda()
+    model = vc_configs['flow']   # .cuda()  模型和数据都在cpu上,onnx.export就是cpu上导出
     model.load_state_dict(state_dict, strict=False)
 
     # 1. export flow decoder estimator
     estimator = model.decoder.estimator
     estimator.eval()
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')    # onnx导出最好直接在cpu上操作
     batch_size, seq_len = 2, 256
     out_channels = estimator.out_channels
     onnx_model_path = '{}/flow.decoder.estimator.fp32.onnx'.format(save_root)
@@ -78,23 +87,24 @@ def main():
     option = onnxruntime.SessionOptions()
     option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     option.intra_op_num_threads = 1
-    providers = ['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider']
+    # providers = ['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider']
+    providers = ['CPUExecutionProvider']
     estimator_onnx = onnxruntime.InferenceSession(onnx_model_path,
                                                   sess_options=option, providers=providers)
 
-    # for _ in tqdm(range(10)):
-    #     x, mask, mu, t, spks, cond = get_dummy_input(batch_size, random.randint(16, 512), out_channels, device)
-    #     output_pytorch = estimator(x, mask, mu, t, spks, cond)
-    #     ort_inputs = {
-    #         'x': x.cpu().numpy(),
-    #         'mask': mask.cpu().numpy(),
-    #         'mu': mu.cpu().numpy(),
-    #         't': t.cpu().numpy(),
-    #         'spks': spks.cpu().numpy(),
-    #         'cond': cond.cpu().numpy()
-    #     }
-    #     output_onnx = estimator_onnx.run(None, ort_inputs)[0]
-    #     torch.testing.assert_allclose(output_pytorch, torch.from_numpy(output_onnx).to(device), rtol=1e-2, atol=1e-4)
+    for _ in tqdm(range(10)):
+        x, mask, mu, t, spks, cond = get_dummy_input(batch_size, random.randint(16, 512), out_channels, device)
+        output_pytorch = estimator(x, mask, mu, t, spks, cond)
+        ort_inputs = {
+            'x': x.cpu().numpy(),
+            'mask': mask.cpu().numpy(),
+            'mu': mu.cpu().numpy(),
+            't': t.cpu().numpy(),
+            'spks': spks.cpu().numpy(),
+            'cond': cond.cpu().numpy()
+        }
+        output_onnx = estimator_onnx.run(None, ort_inputs)[0]
+        torch.testing.assert_allclose(output_pytorch, torch.from_numpy(output_onnx).to(device), rtol=1e-2, atol=1e-5)
     logging.info('successfully export estimator')
 
     # convert onnx into tensorrt

@@ -15,6 +15,8 @@ import threading
 import torch
 import torch.nn.functional as F
 from cosyvoice.flow.components.flow_matching import BASECFM
+from cosyvoice.utils.common import set_all_random_seed
+import onnxruntime
 
 
 class ConditionalCFM(BASECFM):
@@ -124,6 +126,18 @@ class ConditionalCFM(BASECFM):
     def forward_estimator(self, x, mask, mu, t, spks, cond):
         if isinstance(self.estimator, torch.nn.Module):
             return self.estimator.forward(x, mask, mu, t, spks, cond)
+        elif isinstance(self.estimator, onnxruntime.InferenceSession):
+            ort_inputs = {
+                'x': x.cpu().numpy(),
+                'mask': mask.cpu().numpy(),
+                'mu': mu.cpu().numpy(),
+                't': t.cpu().numpy(),
+                'spks': spks.cpu().numpy(),
+                'cond': cond.cpu().numpy()
+            }
+            output_onnx = self.estimator.run(None, ort_inputs)[0]
+            return torch.from_numpy(output_onnx).to(x.device)
+
         else:
             [estimator, stream], trt_engine = self.estimator.acquire_estimator()
             with stream:
@@ -194,6 +208,7 @@ class ConditionalCFM(BASECFM):
 class CausalConditionalCFM(ConditionalCFM):
     def __init__(self, in_channels, cfm_params, n_spks=1, spk_emb_dim=64, estimator: torch.nn.Module = None):
         super().__init__(in_channels, cfm_params, n_spks, spk_emb_dim, estimator)
+        set_all_random_seed(0)
         self.rand_noise = torch.randn([1, 80, 50 * 300])
 
     @torch.inference_mode()
