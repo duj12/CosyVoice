@@ -14,12 +14,13 @@ sys.path.append('{}/../..'.format(ROOT_DIR))
 from cosyvoice.utils.file_utils import logging
 torch.backends.cudnn.enabled = False    # 必须设置为False
 torch.backends.cudnn.benchmark = False
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.backends.cudnn.allow_tf32 = False
-torch.backends.cudnn.deterministic = True
-torch.use_deterministic_algorithms(True)
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+# torch.backends.cudnn.deterministic = True
+# torch.use_deterministic_algorithms(True)
+# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def get_dummy_input(batch_size, seq_len, out_channels, device):
@@ -52,15 +53,15 @@ def main():
             'hift': None,
         })
 
-    model = vc_configs['flow']   # .cuda()  模型和数据都在cpu上,onnx.export就是cpu上导出
+    model = vc_configs['flow'].cuda()  # 模型和数据都在cpu上,onnx.export就是cpu上导出
     model.load_state_dict(state_dict, strict=False)
 
     # 1. export flow decoder estimator
     estimator = model.decoder.estimator
     estimator.eval()
 
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')    # onnx导出最好直接在cpu上操作
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cpu')    # onnx导出最好直接在cpu上操作, 但cpu导出时，转换成TRT会非常的慢
     batch_size, seq_len = 2, 256
     out_channels = estimator.out_channels
     onnx_model_path = '{}/flow.decoder.estimator.fp32.onnx'.format(save_root)
@@ -87,8 +88,8 @@ def main():
     option = onnxruntime.SessionOptions()
     option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     option.intra_op_num_threads = 1
-    # providers = ['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider']
-    providers = ['CPUExecutionProvider']
+    providers = ['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider']
+    # providers = ['CPUExecutionProvider']
     estimator_onnx = onnxruntime.InferenceSession(onnx_model_path,
                                                   sess_options=option, providers=providers)
 
@@ -133,6 +134,17 @@ def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 32)  # 4GB
     if fp16:
         config.set_flag(trt.BuilderFlag.FP16)
+    else:
+        config.set_flag(trt.BuilderFlag.TF32)
+    # 确保精度一致性
+    config.set_flag(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS)
+    # config.set_flag(trt.BuilderFlag.PREFER_PRECISION_CONSTRAINTS)
+    # 对语音模型重要的设置
+    config.set_flag(trt.BuilderFlag.DIRECT_IO)  # 避免不必要的格式转换
+    config.set_flag(trt.BuilderFlag.REJECT_EMPTY_ALGORITHMS)  # 避免无效优化
+    print(f"Training matmul allow TF32: {torch.backends.cuda.matmul.allow_tf32}")
+    print(f"Training cudnn allow TF32: {torch.backends.cudnn.allow_tf32}")
+
     profile = builder.create_optimization_profile()
     # load onnx model
     with open(onnx_model, "rb") as f:
