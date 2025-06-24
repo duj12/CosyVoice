@@ -12,15 +12,6 @@ from hyperpyyaml import load_hyperpyyaml
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append('{}/../..'.format(ROOT_DIR))
 from cosyvoice.utils.file_utils import logging
-torch.backends.cudnn.enabled = False    # 必须设置为False
-torch.backends.cudnn.benchmark = False
-
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-# torch.backends.cudnn.deterministic = True
-# torch.use_deterministic_algorithms(True)
-# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def get_dummy_input(batch_size, seq_len, out_channels, device):
@@ -56,6 +47,7 @@ def main():
     model = vc_configs['flow'].cuda()  # 模型和数据都在cpu上,onnx.export就是cpu上导出
     model.load_state_dict(state_dict, strict=False)
 
+    torch.backends.cudnn.enabled = False  # 必须设置为False
     # 1. export flow decoder estimator
     estimator = model.decoder.estimator
     estimator.eval()
@@ -89,7 +81,7 @@ def main():
     option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     option.intra_op_num_threads = 1
     providers = ['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider']
-    # providers = ['CPUExecutionProvider']
+    providers = ['CPUExecutionProvider']  # CUDAExecutionProvider和torch无法对齐
     estimator_onnx = onnxruntime.InferenceSession(onnx_model_path,
                                                   sess_options=option, providers=providers)
 
@@ -109,10 +101,13 @@ def main():
     logging.info('successfully export estimator')
 
     # convert onnx into tensorrt
-    trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
-    convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
-    trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
-    convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
+    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
+    # convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
+    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
+    # convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
+    trt_model_path = f"{save_root}/flow.decoder.estimator.bf16.trt"
+    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False, True)
+
 
 def get_trt_kwargs():
     min_shape = [(2, 80, 4), (2, 1, 4), (2, 80, 4), (2, 80, 4)]
@@ -123,7 +118,10 @@ def get_trt_kwargs():
             'max_shape': max_shape, 'input_names': input_names}
 
 def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
-
+    torch.backends.cuda.matmul.allow_tf32 = False
+    print(f"cudnn enabled: {torch.backends.cudnn.enabled}")
+    print(f"matmul allow TF32: {torch.backends.cuda.matmul.allow_tf32}")
+    print(f"cudnn allow TF32: {torch.backends.cudnn.allow_tf32}")
     logging.info("Converting onnx to trt...")
     network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     logger = trt.Logger(trt.Logger.INFO)
@@ -134,17 +132,6 @@ def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 32)  # 4GB
     if fp16:
         config.set_flag(trt.BuilderFlag.FP16)
-    else:
-        config.set_flag(trt.BuilderFlag.TF32)
-    # 确保精度一致性
-    config.set_flag(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS)
-    # config.set_flag(trt.BuilderFlag.PREFER_PRECISION_CONSTRAINTS)
-    # 对语音模型重要的设置
-    config.set_flag(trt.BuilderFlag.DIRECT_IO)  # 避免不必要的格式转换
-    config.set_flag(trt.BuilderFlag.REJECT_EMPTY_ALGORITHMS)  # 避免无效优化
-    print(f"Training matmul allow TF32: {torch.backends.cuda.matmul.allow_tf32}")
-    print(f"Training cudnn allow TF32: {torch.backends.cudnn.allow_tf32}")
-
     profile = builder.create_optimization_profile()
     # load onnx model
     with open(onnx_model, "rb") as f:
@@ -156,6 +143,56 @@ def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
     for i in range(len(trt_kwargs['input_names'])):
         profile.set_shape(trt_kwargs['input_names'][i], trt_kwargs['min_shape'][i], trt_kwargs['opt_shape'][i], trt_kwargs['max_shape'][i])
     tensor_dtype = trt.DataType.HALF if fp16 else trt.DataType.FLOAT
+    # set input and output data type
+    for i in range(network.num_inputs):
+        input_tensor = network.get_input(i)
+        input_tensor.dtype = tensor_dtype
+    for i in range(network.num_outputs):
+        output_tensor = network.get_output(i)
+        output_tensor.dtype = tensor_dtype
+    config.add_optimization_profile(profile)
+    engine_bytes = builder.build_serialized_network(network, config)
+    # save trt engine
+    with open(trt_model, "wb") as f:
+        f.write(engine_bytes)
+    logging.info("Succesfully convert onnx to trt...")
+
+
+def convert_onnx_to_trt1(trt_model, trt_kwargs, onnx_model, fp16, bf16=False):
+    print(f"cudnn enabled: {torch.backends.cudnn.enabled}")
+    print(f"matmul allow TF32: {torch.backends.cuda.matmul.allow_tf32}")
+    print(f"cudnn allow TF32: {torch.backends.cudnn.allow_tf32}")
+    logging.info("Converting onnx to trt...")
+    network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    logger = trt.Logger(trt.Logger.INFO)
+    builder = trt.Builder(logger)
+    network = builder.create_network(network_flags)
+    parser = trt.OnnxParser(network, logger)
+    config = builder.create_builder_config()
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 32)  # 4GB
+
+    if bf16:
+        config.set_flag(trt.BuilderFlag.BF16)
+    elif fp16:
+        config.set_flag(trt.BuilderFlag.FP16)
+
+    profile = builder.create_optimization_profile()
+    # load onnx model
+    with open(onnx_model, "rb") as f:
+        if not parser.parse(f.read()):
+            for error in range(parser.num_errors):
+                print(parser.get_error(error))
+            raise ValueError('failed to parse {}'.format(onnx_model))
+    # set input shapes
+    for i in range(len(trt_kwargs['input_names'])):
+        profile.set_shape(trt_kwargs['input_names'][i], trt_kwargs['min_shape'][i], trt_kwargs['opt_shape'][i], trt_kwargs['max_shape'][i])
+
+    if bf16:
+        tensor_dtype = trt.DataType.BF16
+    elif fp16:
+        tensor_dtype = trt.DataType.HALF
+    else:
+        tensor_dtype = trt.DataType.FLOAT
     # set input and output data type
     for i in range(network.num_inputs):
         input_tensor = network.get_input(i)

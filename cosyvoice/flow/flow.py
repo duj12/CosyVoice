@@ -423,7 +423,7 @@ class StreamMaskedDiffWithXvec(torch.nn.Module):
         # concat text and prompt_text
         token, token_len = torch.concat([prompt_token, token], dim=1), prompt_token_len + token_len
         mask = (~make_pad_mask(token_len)).unsqueeze(-1).to(embedding)
-        token = self.input_embedding(torch.clamp(token, min=0)) * mask
+        token = self.input_embedding(torch.clamp(token, min=0).long()) * mask
 
         # text encode
         if finalize is True:

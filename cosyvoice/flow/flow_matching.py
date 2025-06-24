@@ -33,7 +33,6 @@ class ConditionalCFM(BASECFM):
         in_channels = in_channels + (spk_emb_dim if n_spks > 0 else 0)
         # Just change the architecture of the estimator here
         self.estimator = estimator
-        self.lock = threading.Lock()
 
     @torch.inference_mode()
     def forward(self, mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None, prompt_len=0, flow_cache=torch.zeros(1, 80, 0, 2)):
@@ -148,13 +147,14 @@ class ConditionalCFM(BASECFM):
                 estimator.set_input_shape('t', (2,))
                 estimator.set_input_shape('spks', (2, 80))
                 estimator.set_input_shape('cond', (2, 80, x.size(2)))
+                output = torch.zeros_like(x)
                 data_ptrs = [x.contiguous().data_ptr(),
                              mask.contiguous().data_ptr(),
                              mu.contiguous().data_ptr(),
                              t.contiguous().data_ptr(),
                              spks.contiguous().data_ptr(),
                              cond.contiguous().data_ptr(),
-                             x.data_ptr()]
+                             output.contiguous().data_ptr()]
                 for i, j in enumerate(data_ptrs):
                     estimator.set_tensor_address(trt_engine.get_tensor_name(i), j)
                 # run trt engine
@@ -162,7 +162,7 @@ class ConditionalCFM(BASECFM):
                     torch.cuda.current_stream().cuda_stream) is True
                 torch.cuda.current_stream().synchronize()
             self.estimator.release_estimator(estimator, stream)
-            return x
+            return output
 
     def compute_loss(self, x1, mask, mu, spks=None, cond=None, streaming=False):
         """Computes diffusion loss

@@ -49,6 +49,8 @@ def main():
     script.save('{}/flow.encoder.fp32.zip'.format(save_root))
     script = get_optimized_script(flow_encoder.half())
     script.save('{}/flow.encoder.fp16.zip'.format(save_root))
+    script = get_optimized_script(flow_encoder.to(torch.bfloat16))
+    script.save('{}/flow.encoder.bf16.zip'.format(save_root))
     logging.info('successfully export flow_encoder')
 
 
