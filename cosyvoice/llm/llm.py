@@ -1643,15 +1643,15 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
                 lm_input = lm_input.to(quant_type).to(torch.float32)
 
             # 6. run lm forward
-            # llm_input_mask = torch.tril(torch.ones((
-            #     lm_input.size(0), lm_input.size(1), lm_input.size(1)),
-            #     device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文. 推理的时候用
-            llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
-            # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
-            llm_input_mask = add_optional_chunk_mask(
-                lm_input, llm_input_mask, use_dynamic_chunk=False,
-                use_dynamic_left_chunk=False, decoding_chunk_size=-1,
-                static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
+            llm_input_mask = torch.tril(torch.ones((
+                lm_input.size(0), lm_input.size(1), lm_input.size(1)),
+                device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文
+            # llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
+            # # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
+            # llm_input_mask = add_optional_chunk_mask(
+            #     lm_input, llm_input_mask, use_dynamic_chunk=False,
+            #     use_dynamic_left_chunk=False, decoding_chunk_size=-1,
+            #     static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
 
             lm_output, lm_output_mask = self.llm.forward_one_step(lm_input, llm_input_mask.to(device))
             if use_quant:  # 模拟推理时量化损失

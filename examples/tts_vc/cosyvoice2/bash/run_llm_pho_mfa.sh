@@ -6,16 +6,16 @@ stage=0
 stop_stage=0
 
 # train llm_pho
-export CUDA_VISIBLE_DEVICES="4,5,6,7"
+export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
 num_gpus=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 job_id=1986
 dist_backend="nccl"
-num_workers=4
+num_workers=1
 prefetch=100
 train_engine=torch_ddp
-exp_name=bigvgan_tts1
-exp_conf=cosyvoice_bigvgan_tts1
-portnum=2302
+exp_name=llm_pho_31w1_tts1_bf16_mfa
+exp_conf=cosyvoice_pho_mfa
+portnum=2104
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
@@ -33,14 +33,14 @@ run_command() {
       --timeout  60    \
       --train_engine $train_engine \
       --config conf/$exp_conf.yaml \
-      --model hifigan \
+      --model llm \
       --checkpoint $pretrained_model_dir \
       --model_dir `pwd`/exp/$model \
       --tensorboard_dir `pwd`/tensorboard/$model \
       --ddp.dist_backend $dist_backend \
       --num_workers ${num_workers} \
       --prefetch ${prefetch} \
-      --pin_memory \
+      --pin_memory  --use_amp \
       --deepspeed_config ./conf/ds_stage2.json \
       --deepspeed.save_states model+optimizer
   done

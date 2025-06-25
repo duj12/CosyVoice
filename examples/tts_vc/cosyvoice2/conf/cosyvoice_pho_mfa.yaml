@@ -4,14 +4,7 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
-# LoRA
-use_lora: True
-lora_r: 16
-lora_alpha: 16
-lora_init_weights: "normal"
-lora_skip_modules: []  # ["llm", "src_attention", "speech_embedding"]
-use_offline_spkemb: True
-offline_speaker_vec: "../../../pretrained_models/TTS_spk_vec.pt"
+dtype: 'bf16'
 
 # fixed params
 codec_type: "s3tokenizer_v2"
@@ -24,10 +17,12 @@ qwen_pretrain_path: "../../../pretrained_models/CosyVoice2-0.5B/CosyVoice-BlankE
 # second of min length, if the duration of a audio is less than this, it will be duplicated.
 # for speaker audio crop, 0 means do not crop
 spk_audio_crop: 10
+rich_sample_short_utt: 0
 
 s3tokenizer_ckpt: "../../../pretrained_models/s3tokenizer"
 speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: True  # whether use human labeled or MFA aligned pause labels
+
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
@@ -49,8 +44,9 @@ llm: !new:cosyvoice.llm.llm.Qwen2LM_Phoneme_Src2
     length_normalized_loss: True
     lsm_weight: 0
     spk_embed_dim: !ref <spk_embed_dim>
-    use_frontend_prsd: True
+    use_frontend_prsd: !ref <use_pause_label>
     use_pause_label: !ref <use_pause_label>
+    qwen_dtype: !ref <dtype>
     text_encoder: !new:cosyvoice.transformer.encoder.ConformerEncoder
         input_size: !ref <text_encoder_input_size>
         output_size: 1024
@@ -166,7 +162,7 @@ tokenize: !name:cosyvoice.dataset.processor_kaldidata.tokenize
     get_tokenizer: !ref <get_tokenizer>
     allowed_special: !ref <allowed_special>
 filter: !name:cosyvoice.dataset.processor_kaldidata.filter
-    max_length: 3600  # 100 frame per second
+    max_length: 4000  # 100 frame per second
     min_length: 0
     token_max_length: 512    # phoneme length
     token_min_length: 1
@@ -189,7 +185,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 6
+    batch_size: 8
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft
@@ -198,12 +194,15 @@ truncate: !name:cosyvoice.dataset.processor_kaldidata.truncate
 get_transcriber: !name:cosyvoice.dataset.transcriber.get_transcriber
 transcribe: !name:cosyvoice.dataset.processor_kaldidata.transcribe
     get_transcriber: !ref <get_transcriber>
+
+truncate_phoneme_sequence: !name:cosyvoice.dataset.processor_kaldidata.truncate_phoneme_sequence
 # dataset processor pipeline
 data_pipeline: [
-    !ref <tokenize>,
-    !ref <tokenize_pho>,
     !ref <filter>,
     !ref <resample>,
+    !ref <truncate_phoneme_sequence>,
+    !ref <tokenize>,
+    !ref <tokenize_pho>,    # tokenize_pho 必须在truncate phoneme之后
     !ref <compute_fbank>,
     !ref <shuffle>,
     !ref <sort>,
@@ -233,10 +232,10 @@ train_conf:
     grad_clip: 5
     accum_grad: 2
     log_interval: 100
-    save_per_step: 5000
+    save_per_step: 10000
 
 # multiple train data dir
-train_data0: [
+train_data: [
     [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
     [ "/data/megastore/SHARE/TTS/VoiceClone/LTTS/LTTS.vits.json",0,1 ],
@@ -425,20 +424,8 @@ train_data0: [
 
 ]
 
-train_data: [
-    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS/ENTTS.vits.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.vits.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/LTTS/LTTS.vits.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_CN/MSTTS_CN.vits.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/MSTTS_EN/MSTTS_EN.vits.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/ENTTS_LibriTTS/ENTTS_LibriTTS.vits.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone/NTTS/NTTS.ID36+37.10min.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/MengNiu/MengNiu.vits.json",0,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC1/ENTTS_VC1.ID12.json",1,1 ],
-    [ "/data/megastore/SHARE/TTS/VoiceClone3/ENTTS_VC3/ENTTS_VC3.ID88.json",1,1 ]
-]
 train_data_indexes: [
-    [0,1,2]
+    [0,1,2,3,4,5]
 ]
 
 train_data_indexes1: [

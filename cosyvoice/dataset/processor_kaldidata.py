@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os.path
-
+import numpy as np
 import logging
 import random
 import torch
@@ -212,6 +212,53 @@ def truncate(data, truncate_length=24576, mode='train'):
             if mode == 'train':
                 waveform = torch.concat([waveform, torch.zeros(1, truncate_length - waveform.shape[1])], dim=1)
         sample['speech'] = waveform
+        yield sample
+
+def truncate_phoneme_sequence(
+        data, prob=0.5,
+        prosody_weights={'#1': 0.05, '#2': 1, '#3': 1},
+        prosody_len={'#1': 0.001, '#2': 0.25, '#3': 0.35},
+        min_len=5, min_dur=0.5, mode='train'):
+    '''
+    truncate the input phoneme sequence, get corresponding speech clip according to the MFA duration
+    '''
+    for sample in data:
+        assert 'speech' in sample
+        assert 'sample_rate' in sample
+        assert 'pho' in sample
+        assert 'mfa_duration' in sample
+
+        sr = sample['sample_rate']
+        wav = sample['speech']
+        pho = sample['pho']
+        mfa_duration = sample['mfa_duration']
+        if random.random() < prob:
+            if len(wav) / sr - np.sum(mfa_duration) > 0.2:
+                logging.warning(f"{sample['wav']} mfa duration not match wav duration")
+                continue
+
+            if len(pho) != len(mfa_duration):
+                logging.warning(f"{sample['wav']} mfa duration not match pho sequence")
+                continue
+
+            # find all #1, #2, #3, assign different weights
+            truncate_indexs = [i for i, x in enumerate(pho) if x in ['#1', '#2', '#3'] and i > min_len]
+            weights = [prosody_weights[x] for i, x in enumerate(pho) if x in ['#1', '#2', '#3'] and i > min_len]
+
+            if truncate_indexs != []:
+                index = random.choices(truncate_indexs, weights)[0]
+                duration = np.sum(mfa_duration[:index + 1])
+                if duration > min_dur:  # must larger than 0.5s
+                    wav = wav[:, :int(duration * sr)]  # 1, T
+                    # pad sil
+                    pad_len = int(prosody_len[pho[index]] * sr)
+                    wav = F.pad(wav, (0, pad_len), value=0)
+                    pho = pho[:index+1]
+
+        sample['pho'] = pho
+        sample['speech'] = wav
+        del sample['mfa_duration']
+
         yield sample
 
 

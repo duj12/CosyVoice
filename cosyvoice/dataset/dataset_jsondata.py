@@ -109,13 +109,14 @@ class DistributedSampler:
 
 class DataList(IterableDataset):
 
-    def __init__(self, lists, utt2wav, utt2text, utt2pho, utt2spk,
+    def __init__(self, lists, utt2wav, utt2text, utt2pho, utt2spk, utt2dur=None,
                  shuffle=True, partition=True, tts_text=None, eval=False, need_text=True):
         self.lists = lists
         self.utt2wav = utt2wav
         self.utt2text = utt2text
         self.utt2pho = utt2pho
         self.utt2spk = utt2spk
+        self.utt2dur = utt2dur
         self.tts_text = tts_text  # a list, each prompt will generate all texts in the list
         self.need_text = need_text
         if not eval:
@@ -155,6 +156,9 @@ class DataList(IterableDataset):
                 sample['spk'] = self.utt2spk[utt]
             else:
                 sample['spk'] = utt
+
+            if self.utt2dur is not None and utt in self.utt2dur:
+                sample['mfa_duration'] = self.utt2dur[utt]
 
             sample.update(sampler_info)
 
@@ -227,6 +231,7 @@ def Dataset(json_file,
     utt2pho = {}
     utt2spk = {}
     utt2text = {}
+    utt2dur = {}
     valid_utt_list = []
 
     def add_one_data(json_file):
@@ -260,6 +265,19 @@ def Dataset(json_file,
                 utt2wav[utt] = wav_path
                 utt2pho[utt] = pho
                 utt2spk[utt] = speaker
+                if 'mfa_duration' in sequence:
+                    mfa_duration = sequence['mfa_duration']
+                    duration = []
+                    mfa_idx = 0
+                    for idx, p in enumerate(pho):
+                        if p.startswith('#'):   # 韵律音素，插入时长为0
+                            duration.append(0)
+                            continue
+                        duration.append(float(mfa_duration[mfa_idx]))
+                        mfa_idx += 1
+                    # assert len(pho) == len(duration)
+                    utt2dur[utt] = duration
+
                 valid_utt_list.append(utt)
                 if rich_sample_short_utt>0 and len(pho) < 20:  # 对音素序列长度低于20的音频富采样
                     valid_utt_list.extend([utt]*rich_sample_short_utt)
@@ -303,7 +321,7 @@ def Dataset(json_file,
             logging.info(f"read {len(tts_text)} lines from {tts_file}")
 
     dataset = DataList(valid_utt_list, utt2wav, utt2text, utt2pho, utt2spk,
-                       shuffle=shuffle, partition=partition,
+                       utt2dur, shuffle=shuffle, partition=partition,
                        tts_text=tts_text, eval=eval, need_text=need_text)
 
     if gan is True:
