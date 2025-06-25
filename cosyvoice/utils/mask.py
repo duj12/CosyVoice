@@ -131,7 +131,7 @@ def add_optional_chunk_mask(xs: torch.Tensor,
                             decoding_chunk_size: int,
                             static_chunk_size: int,
                             num_decoding_left_chunks: int,
-                            enable_full_context: bool = True,
+                            enable_full_context: bool = False,
                             max_dynamic_chunk_size: int=25,
     ):
     """ Apply optional mask for encoder.

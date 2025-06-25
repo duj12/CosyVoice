@@ -4,6 +4,8 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+dtype: 'bf16'
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000
@@ -21,6 +23,7 @@ speaker_encoder_ckpt: "../../../pretrained_models/speaker_encoder_v2.pt"
 use_pause_label: False  # whether use human labeled or MFA aligned pause labels
 
 need_text: False  # whether dataset need text
+use_offline_uttemb: True  # 使用离线提取的向量
 
 # model params
 # for all class/function included in this repo, we use !<name> or !<new> for intialization, so that user may find all corresponding class/function according to one single yaml.
@@ -96,6 +99,7 @@ flow: !new:cosyvoice.flow.flow.CausalMaskedDiffWithXvec
         input_size: 512
         use_cnn_module: False
         macaron_style: False
+        use_dynamic_chunk: True
     decoder: !new:cosyvoice.flow.flow_matching.CausalConditionalCFM
         in_channels: 240
         n_spks: 1
