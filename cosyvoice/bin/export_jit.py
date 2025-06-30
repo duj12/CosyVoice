@@ -29,7 +29,7 @@ def main():
     vc_config_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/vc_config_v2.yaml"
     vc_model_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow/flow_v2.pt"
     save_root = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow"
-
+    print(f"model path: {vc_model_path}")
     state_dict = torch.load(vc_model_path)
     print(state_dict.keys())
     with open(vc_config_path, 'r') as f:

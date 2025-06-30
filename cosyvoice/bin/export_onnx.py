@@ -33,7 +33,7 @@ def main():
     vc_config_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/vc_config_v2.yaml"
     vc_model_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow/flow_v2.pt"
     save_root = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/Flow"
-
+    print(f"model path: {vc_model_path}")
     state_dict = torch.load(vc_model_path)
     print(state_dict.keys())
     with open(vc_config_path, 'r') as f:
@@ -101,10 +101,10 @@ def main():
     logging.info('successfully export estimator')
 
     # convert onnx into tensorrt
-    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
-    # convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
-    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
-    # convert_onnx_to_trt(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
+    trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
+    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
+    trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
+    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
     trt_model_path = f"{save_root}/flow.decoder.estimator.bf16.trt"
     convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False, True)
 
@@ -117,7 +117,14 @@ def get_trt_kwargs():
     return {'min_shape': min_shape, 'opt_shape': opt_shape,
             'max_shape': max_shape, 'input_names': input_names}
 
-def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
+def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, model_type='fp32'):
+    '''
+    :param trt_model: 导出TRT模型路径
+    :param trt_kwargs: TRT模型输入参数
+    :param onnx_model: 输入Onnx模型路径
+    :param model_type: 导出模型数据类型，支持fp32, fp16, bf16三种data_type导出
+    :return:
+    '''
     torch.backends.cuda.matmul.allow_tf32 = False
     print(f"cudnn enabled: {torch.backends.cudnn.enabled}")
     print(f"matmul allow TF32: {torch.backends.cuda.matmul.allow_tf32}")
@@ -130,8 +137,12 @@ def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
     parser = trt.OnnxParser(network, logger)
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 32)  # 4GB
-    if fp16:
+
+    if model_type =='bf16':
+        config.set_flag(trt.BuilderFlag.BF16)
+    elif model_type == 'fp16':
         config.set_flag(trt.BuilderFlag.FP16)
+
     profile = builder.create_optimization_profile()
     # load onnx model
     with open(onnx_model, "rb") as f:
@@ -142,7 +153,14 @@ def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
     # set input shapes
     for i in range(len(trt_kwargs['input_names'])):
         profile.set_shape(trt_kwargs['input_names'][i], trt_kwargs['min_shape'][i], trt_kwargs['opt_shape'][i], trt_kwargs['max_shape'][i])
-    tensor_dtype = trt.DataType.HALF if fp16 else trt.DataType.FLOAT
+    
+    if model_type == 'bf16':
+        tensor_dtype = trt.DataType.BF16
+    elif model_type == 'fp16':
+        tensor_dtype = trt.DataType.HALF
+    else:
+        tensor_dtype = trt.DataType.FLOAT
+    
     # set input and output data type
     for i in range(network.num_inputs):
         input_tensor = network.get_input(i)
