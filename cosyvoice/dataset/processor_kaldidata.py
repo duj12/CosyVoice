@@ -216,9 +216,9 @@ def truncate(data, truncate_length=24576, mode='train'):
 
 def truncate_phoneme_sequence(
         data, prob=0.5,
-        prosody_weights={'#1': 0.05, '#2': 1, '#3': 1},
+        prosody_weights={'#1': 0.5, '#2': 1, '#3': 1},
         prosody_len={'#1': 0.001, '#2': 0.25, '#3': 0.35},
-        min_len=5, min_dur=0.5, mode='train'):
+        min_len=2, min_dur=0.08, mode='train'):
     '''
     truncate the input phoneme sequence, get corresponding speech clip according to the MFA duration
     '''
