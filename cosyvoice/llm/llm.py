@@ -1643,15 +1643,15 @@ class Qwen2LM_Phoneme_Src2(torch.nn.Module):
                 lm_input = lm_input.to(quant_type).to(torch.float32)
 
             # 6. run lm forward
-            llm_input_mask = torch.tril(torch.ones((
-                lm_input.size(0), lm_input.size(1), lm_input.size(1)),
-                device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文
-            # llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
-            # # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
-            # llm_input_mask = add_optional_chunk_mask(
-            #     lm_input, llm_input_mask, use_dynamic_chunk=False,
-            #     use_dynamic_left_chunk=False, decoding_chunk_size=-1,
-            #     static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
+            # llm_input_mask = torch.tril(torch.ones((
+            #     lm_input.size(0), lm_input.size(1), lm_input.size(1)),
+            #     device=lm_input.device)).to(torch.bool)   # B T T 三角矩阵，只attention前文
+            llm_input_mask = ~make_pad_mask(lm_input_len, lm_input.size(1)).unsqueeze(1)  # (B, 1, T)
+            # 目前训练时使用全局attention, 不设置动态chunk和固定chunk
+            llm_input_mask = add_optional_chunk_mask(
+                lm_input, llm_input_mask, use_dynamic_chunk=False,
+                use_dynamic_left_chunk=False, decoding_chunk_size=-1,
+                static_chunk_size=-1, num_decoding_left_chunks=-1)    # B, T, T
 
             lm_output, lm_output_mask = self.llm.forward_one_step(lm_input, llm_input_mask.to(device))
             if use_quant:  # 模拟推理时量化损失
@@ -2449,6 +2449,12 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
             use_frontend_prsd: bool = False,
             use_pause_label: bool = False,
             qwen_sglang_config: dict = None,
+            vllm_sample_params: dict = {
+                "top_k":   10,  #
+                "top_p":  0.8,  # 默认1.0
+                "temperature": 1.0,  # 默认1.0
+                "repetition_penalty": 1.0,  # 默认1.0,设置大于一容易丢发音
+            },
     ):
         super().__init__()
         self.llm_input_size = llm_input_size
@@ -2466,6 +2472,8 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
         self.use_pause_label = use_pause_label
         logger.info(
             f"llm use frontend prosody: {use_frontend_prsd}, use pause label: {use_pause_label}")
+        self.vllm_sample_params = vllm_sample_params
+        logger.info(f"vllm sampling params: {vllm_sample_params}")
 
         self.text_encoder = text_encoder
         self.text_encoder_affine_layer = nn.Linear(
@@ -2657,10 +2665,10 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
         # 5. step by step decode
         if self.use_vllm:
             from vllm import SamplingParams, RequestOutput
-            sampling_params = SamplingParams(top_k=20,   # 外面传进来的sampling值是25
-                                             top_p=0.8,      # 默认1.0
-                                             # temperature=1.0,  # 默认1.0
-                                             # repetition_penalty=1.0,  # 默认1.0
+            sampling_params = SamplingParams(top_k=self.vllm_sample_params['top_k'],   # 外面传进来的sampling值是25
+                                             top_p=self.vllm_sample_params['top_p'],      # 默认1.0
+                                             temperature=self.vllm_sample_params['temperature'],  # 默认1.0
+                                             repetition_penalty=self.vllm_sample_params['repetition_penalty'],  # 默认1.0
                                              stop_token_ids=self.stop_token_ids,
                                              min_tokens=min_len,
                                              max_tokens=max_len)
