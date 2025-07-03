@@ -14,7 +14,7 @@ num_workers=1
 prefetch=100
 train_engine=torch_ddp
 exp_name=flow_15w_bf16
-exp_conf=cosyvoice_flow
+exp_conf=cosyvoice_flow_tts
 pretrained_model_dir=exp/$exp_name
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then

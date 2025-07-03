@@ -2516,6 +2516,7 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
         self.lock = threading.Lock()
         self.use_vllm = (qwen_sglang_config is not None)
         if self.use_vllm:
+            os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"  # 默认后端为Flash-Attn, 改为FlashInfer
             python_bin_dir = os.path.dirname(sys.executable)
             custom_env = os.environ.copy()
             custom_env["PATH"] = f"{python_bin_dir}:{custom_env['PATH']}"
@@ -2656,7 +2657,10 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
         # 5. step by step decode
         if self.use_vllm:
             from vllm import SamplingParams, RequestOutput
-            sampling_params = SamplingParams(top_k=sampling,
+            sampling_params = SamplingParams(top_k=20,   # 外面传进来的sampling值是25
+                                             top_p=0.8,      # 默认1.0
+                                             # temperature=1.0,  # 默认1.0
+                                             # repetition_penalty=1.0,  # 默认1.0
                                              stop_token_ids=self.stop_token_ids,
                                              min_tokens=min_len,
                                              max_tokens=max_len)

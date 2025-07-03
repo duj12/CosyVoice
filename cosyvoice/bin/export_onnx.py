@@ -100,13 +100,13 @@ def main():
         torch.testing.assert_allclose(output_pytorch, torch.from_numpy(output_onnx).to(device), rtol=1e-2, atol=1e-5)
     logging.info('successfully export estimator')
 
-    # convert onnx into tensorrt
-    trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
-    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
-    trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
-    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
-    trt_model_path = f"{save_root}/flow.decoder.estimator.bf16.trt"
-    convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False, True)
+    # # convert onnx into tensorrt
+    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp32.trt"
+    # convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False)
+    # trt_model_path = f"{save_root}/flow.decoder.estimator.fp16.trt"
+    # convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, True)
+    # trt_model_path = f"{save_root}/flow.decoder.estimator.bf16.trt"
+    # convert_onnx_to_trt1(trt_model_path, get_trt_kwargs(), onnx_model_path, False, True)
 
 
 def get_trt_kwargs():

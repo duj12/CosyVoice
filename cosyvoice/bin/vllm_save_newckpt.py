@@ -36,6 +36,7 @@ def export_cosyvoice2_vllm(model, model_path, device):
     model.llm.model.config.vocab_size = pad_vocab_size
     model.llm.model.config.tie_word_embeddings = False
     model.llm.model.config.use_bias = True
+    model.llm.model.config.max_position_embeddings = 1024  # 把最长输入序列从32768缩小为1024，节省推理显存
     model.llm.model.save_pretrained(model_path)
     os.system('sed -i s@Qwen2ForCausalLM@CosyVoice2ForCausalLM@g {}/config.json'.format(os.path.abspath(model_path)))
     model.llm.model.config.vocab_size = tmp_vocab_size
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     pretrain_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/acoustics/qwen/CosyVoice-BlankEN"
     vc_model_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/LLM/llm_v2.pt"
     vc_config_path = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/vc_config_v2.yaml"
-    save_root = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/LLM/VC2_forvllm"
+    save_root = "/data/megastore/SHARE/TTS/LAM_TTS/latest/checkpoints/LAM-VC/LLM/vllm"
 
     state_dict = torch.load(vc_model_path)
     print(state_dict.keys())

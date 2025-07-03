@@ -4,6 +4,8 @@ __set_seed2: !apply:numpy.random.seed [1986]
 __set_seed3: !apply:torch.manual_seed [1986]
 __set_seed4: !apply:torch.cuda.manual_seed_all [1986]
 
+dtype: 'bf16'
+
 # fixed params
 codec_type: "s3tokenizer_v2"
 sample_rate: 24000
@@ -96,6 +98,7 @@ flow: !new:cosyvoice.flow.flow.CausalMaskedDiffWithXvec
         input_size: 512
         use_cnn_module: False
         macaron_style: False
+        use_dynamic_chunk: True
     decoder: !new:cosyvoice.flow.flow_matching.CausalConditionalCFM
         in_channels: 240
         n_spks: 1
@@ -183,7 +186,7 @@ sort: !name:cosyvoice.dataset.processor_kaldidata.sort
     sort_size: 500  # sort_size should be less than shuffle_size
 batch: !name:cosyvoice.dataset.processor_kaldidata.batch
     batch_type: 'static'
-    batch_size: 6
+    batch_size: 8
     max_frames_in_batch: 20000   # 100 frame per second
 padding: !name:cosyvoice.dataset.processor_kaldidata.padding
     use_spk_embedding: False # change to True during sft
