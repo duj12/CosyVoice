@@ -2539,6 +2539,7 @@ class Qwen2LM_Phoneme_Vllm(torch.nn.Module):
             engine_args = EngineArgs(model=model_path,
                                      skip_tokenizer_init=True,
                                      enable_prompt_embeds=True,
+                                     disable_custom_all_reduce=True,
                                      gpu_memory_utilization=float(mem_fraction))
             self.vllm = LLMEngine.from_engine_args(engine_args)
             del self.llm.model.model.layers
