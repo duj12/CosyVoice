@@ -113,7 +113,7 @@ class ConditionalCFM(BASECFM):
         sol = []
 
         trt_context, trt_stream, trt_engine = None, None, None
-        if isinstance(self.estimator, TrtContextWrapper):
+        if getattr(self.estimator, '__class__').__name__ == 'TrtContextWrapper':
             with self.lock:
                 [trt_context, trt_stream], trt_engine = self.estimator.acquire_estimator()
         else:
@@ -164,7 +164,7 @@ class ConditionalCFM(BASECFM):
                 if step < len(t_span) - 1:
                     dt = t_span[step + 1] - t
 
-        if isinstance(self.estimator, TrtContextWrapper):
+        if getattr(self.estimator, '__class__').__name__ == 'TrtContextWrapper':
             with self.lock:
                 self.estimator.release_estimator(trt_context, trt_stream)
 
@@ -185,7 +185,7 @@ class ConditionalCFM(BASECFM):
             output_onnx = self.estimator.run(None, ort_inputs)[0]
             return torch.from_numpy(output_onnx).to(x.device)
 
-        elif isinstance(self.estimator, TrtContextWrapper):
+        elif getattr(self.estimator, '__class__').__name__ == 'TrtContextWrapper':
             # 从上层多步采样的地方获取context, stream传进来，上层也需要用特定的stream
             trt_context = kwargs.get('trt_context')
             trt_stream = kwargs.get('trt_stream')
