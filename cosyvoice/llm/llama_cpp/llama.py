@@ -163,8 +163,9 @@ def _find_llama_lib(preferred_dir: Optional[str] = None) -> str:
     """定位 libllama.so。查找优先级：
     1. 环境变量 LLAMA_CPP_LIB（指定完整 .so 路径，最优先）
     2. llama_cpp_config.llama_lib_dir（yaml 配置的库目录）
-    3. 相对源码目录 llama.cpp/build/bin（开发环境）
-    4. 系统标准安装位置（cmake --install 到 /usr/local 后）
+    3. 已安装的 lamllama wheel 包（pip install lamllama-*.whl，免编译）
+    4. 相对源码目录 llama.cpp/build/bin（开发环境）
+    5. 系统标准安装位置（cmake --install 到 /usr/local 后）
     """
     _preload_system_libstdcxx()
 
@@ -176,7 +177,16 @@ def _find_llama_lib(preferred_dir: Optional[str] = None) -> str:
         if c and os.path.exists(c):
             return c
 
-    # 2) 相对源码目录（仓库里放 llama.cpp 源码树时）
+    # 2) lamllama wheel 包（pip install 后库在 site-packages/lamllama/lib/）
+    try:
+        import lamllama
+        whl_path = os.path.join(lamllama.lib_dir, "libllama.so")
+        if os.path.exists(whl_path):
+            return whl_path
+    except ImportError:
+        pass
+
+    # 3) 相对源码目录（仓库里放 llama.cpp 源码树时）
     src_rel = str(
         Path(__file__).resolve().parent.parent.parent.parent.parent
         / "llama.cpp" / "build" / "bin" / "libllama.so"

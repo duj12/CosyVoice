@@ -20,7 +20,7 @@ llm_llamacpp.py — 用 llama.cpp (GGUF) 运行 Qwen2 backbone 的 LLM 推理类
 import logging
 import os
 import threading
-from typing import Callable, Generator, List, Tuple
+from typing import Callable, Generator, List, Optional, Tuple
 
 # tts/ 目录（checkpoints 根）：acoustics/lam_vc/cosyvoice/llm/ 上四级
 _TTS_DIR = os.path.abspath(
